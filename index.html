@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jorge · Fundación HÁPTICA</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root{
+  --teal:#2A7F7F;--teal2:#1f6060;--teal-pale:#e8f4f4;--teal-light:rgba(42,127,127,.12);
+  --orange:#E8833A;--orange-pale:#fef0e6;--dark:#1a2332;--gray:#6b7280;--gray-light:#f4f6f9;
+  --white:#fff;--green:#16a34a;--red:#dc2626;--yellow:#d97706;
+  --border:#e5e7eb;--shadow:0 4px 24px rgba(42,127,127,.10);--shadow-sm:0 2px 8px rgba(0,0,0,.07);
+  --r:14px;--r-sm:9px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#eef2f7;color:var(--dark)}
+
+/* LOGIN */
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1rem}
+.login-card{background:#fff;border-radius:var(--r);padding:2.5rem 2rem;max-width:360px;width:100%;
+  box-shadow:var(--shadow);text-align:center}
+.login-logo{font-size:2.5rem;margin-bottom:.5rem}
+.login-title{font-size:1.3rem;font-weight:700;color:var(--teal2);margin-bottom:.2rem}
+.login-sub{font-size:.85rem;color:var(--gray);margin-bottom:1.5rem}
+.login-input{width:100%;padding:10px 14px;border-radius:9px;border:1.5px solid var(--border);
+  font-size:.95rem;font-family:inherit;margin-bottom:.75rem;outline:none;transition:border .15s}
+.login-input:focus{border-color:var(--teal)}
+.login-btn{width:100%;padding:11px;border-radius:9px;border:none;background:var(--teal);
+  color:#fff;font-size:.95rem;font-weight:600;cursor:pointer;transition:all .15s}
+.login-btn:hover{background:var(--teal2)}
+.login-err{color:var(--red);font-size:.82rem;margin-top:.5rem;display:none}
+.login-api-row{margin-top:.8rem}
+.login-api-label{font-size:.75rem;color:var(--gray);margin-bottom:3px;text-align:left}
+
+/* HEADER */
+.hdr{background:linear-gradient(135deg,var(--teal) 0%,var(--teal2) 100%);padding:0 1.4rem;
+  display:flex;align-items:center;justify-content:space-between;height:58px;
+  position:sticky;top:0;z-index:100;box-shadow:0 2px 16px rgba(0,0,0,.2)}
+.hdr-left{display:flex;align-items:center;gap:10px}
+.hdr-logo{width:32px;height:32px;background:rgba(255,255,255,.15);border-radius:8px;
+  display:flex;align-items:center;justify-content:center;font-size:16px}
+.hdr-title{color:#fff;font-size:1.05rem;font-weight:600}
+.hdr-sub{color:rgba(255,255,255,.62);font-size:.7rem}
+.hdr-right{display:flex;align-items:center;gap:1rem}
+.hdr-stats{display:flex;gap:1.2rem}
+.hs{text-align:center}
+.hs-val{color:#fff;font-weight:700;font-size:.88rem}
+.hs-label{color:rgba(255,255,255,.55);font-size:.62rem}
+.btn-hdr{padding:5px 11px;border-radius:7px;background:rgba(255,255,255,.13);
+  border:1.5px solid rgba(255,255,255,.28);color:#fff;font-size:.75rem;font-weight:500;
+  cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:5px}
+.btn-hdr:hover{background:rgba(255,255,255,.23)}
+.badge-new{background:var(--orange);color:#fff;border-radius:20px;padding:1px 6px;font-size:.65rem;font-weight:700}
+
+/* UPLOAD MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.48);z-index:300;
+  align-items:center;justify-content:center;padding:1rem}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:var(--r);max-width:520px;width:100%;
+  box-shadow:0 20px 60px rgba(0,0,0,.3);animation:su .2s ease}
+.modal-hdr{background:linear-gradient(135deg,var(--teal),var(--teal2));color:#fff;
+  padding:1rem 1.2rem;border-radius:var(--r) var(--r) 0 0;
+  display:flex;justify-content:space-between;align-items:center}
+.modal-hdr h3{font-size:1rem;font-weight:600}
+.modal-close{background:rgba(255,255,255,.15);border:none;color:#fff;width:24px;height:24px;
+  border-radius:6px;cursor:pointer;font-size:.82rem}
+.modal-body{padding:1.2rem}
+.drop-zone{border:2px dashed var(--border);border-radius:var(--r-sm);padding:1.8rem;
+  text-align:center;cursor:pointer;transition:all .2s;background:#fafbfc}
+.drop-zone.drag-over,.drop-zone:hover{border-color:var(--teal);background:var(--teal-pale)}
+.dz-icon{font-size:2.2rem;margin-bottom:.5rem}
+.dz-text{font-size:.86rem;color:var(--gray)}
+.dz-sub{font-size:.73rem;color:var(--gray);opacity:.7;margin-top:2px}
+#file-input{display:none}
+.prog-wrap{display:none;margin-top:.9rem}
+.prog-label{font-size:.8rem;color:var(--gray);margin-bottom:.3rem}
+.prog-bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.prog-fill{height:100%;background:var(--teal);width:0%;transition:width .3s;border-radius:3px}
+.upload-result{display:none;margin-top:.9rem;padding:.8rem 1rem;border-radius:var(--r-sm);
+  background:var(--teal-pale);border:1.5px solid rgba(42,127,127,.22)}
+.upload-result.error{background:#fee2e2;border-color:var(--red)}
+.ur-line{font-size:.8rem;color:var(--dark);margin-bottom:2px}
+.ur-line b{color:var(--teal)}
+.btn-reload{width:100%;padding:9px;border-radius:8px;border:none;background:var(--teal);
+  color:#fff;font-size:.88rem;font-weight:600;cursor:pointer;margin-top:.7rem;display:none}
+.btn-reload:hover{background:var(--teal2)}
+
+/* LAYOUT */
+.layout{display:flex;min-height:calc(100vh - 58px)}
+.sidebar{width:228px;background:#fff;border-right:1px solid var(--border);
+  padding:1.1rem .85rem;position:sticky;top:58px;height:calc(100vh - 58px);
+  overflow-y:auto;flex-shrink:0}
+.sb-sec{margin-bottom:1.2rem}
+.sb-label{font-size:.66rem;font-weight:600;color:var(--gray);text-transform:uppercase;
+  letter-spacing:.07em;margin-bottom:.4rem;padding:0 .2rem}
+.fg{display:flex;flex-direction:column;gap:2px}
+.fb{padding:6px 9px;border-radius:7px;border:none;background:transparent;cursor:pointer;
+  font-size:.8rem;color:var(--gray);text-align:left;transition:all .12s;font-family:inherit;
+  display:flex;align-items:center;gap:6px}
+.fb:hover{background:var(--teal-pale);color:var(--teal)}
+.fb.active{background:var(--teal);color:#fff;font-weight:500}
+select,input[type=date]{width:100%;padding:6px 8px;border-radius:7px;
+  border:1.5px solid var(--border);font-family:inherit;font-size:.8rem;
+  color:var(--dark);background:#fff;outline:none;transition:border .12s;margin-bottom:3px}
+select:focus,input:focus{border-color:var(--teal)}
+.clear-btn{width:100%;padding:6px;border-radius:7px;border:1.5px solid var(--border);
+  background:#fff;font-size:.76rem;color:var(--gray);cursor:pointer;font-family:inherit;
+  transition:all .12s;margin-top:3px}
+.clear-btn:hover{border-color:var(--teal);color:var(--teal)}
+
+/* MAIN */
+.main{flex:1;padding:1.2rem 1.4rem;overflow-y:auto;min-width:0}
+.tabs{display:flex;gap:2px;margin-bottom:1.1rem;background:#fff;border-radius:8px;
+  padding:3px;width:fit-content;box-shadow:var(--shadow-sm);flex-wrap:wrap}
+.tb{padding:6px 13px;border-radius:6px;border:none;font-family:inherit;
+  font-size:.8rem;font-weight:500;cursor:pointer;transition:all .12s;
+  color:var(--gray);background:transparent}
+.tb.active{background:var(--teal);color:#fff}
+
+/* KPI */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:.8rem;margin-bottom:1rem}
+.kpi{background:#fff;border-radius:var(--r);padding:.9rem;box-shadow:var(--shadow-sm);
+  border:1px solid var(--border);transition:transform .12s}
+.kpi:hover{transform:translateY(-2px)}
+.kpi-ico{font-size:1.3rem;margin-bottom:.25rem}
+.kpi-val{font-size:1.75rem;font-weight:700;color:var(--teal);line-height:1}
+.kpi-label{font-size:.7rem;color:var(--gray);margin-top:2px;font-weight:500}
+.kpi-sub{font-size:.62rem;color:var(--gray);opacity:.7;margin-top:2px}
+
+/* CHARTS */
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-bottom:.9rem}
+.cc{background:#fff;border-radius:var(--r);padding:1rem;box-shadow:var(--shadow-sm);border:1px solid var(--border)}
+.cc.wide{grid-column:1/-1}
+.cc-title{font-weight:600;font-size:.84rem;color:var(--dark);margin-bottom:.8rem}
+.cw{position:relative;height:185px}
+.cw.tall{height:245px}
+.cw.xtall{height:310px}
+
+/* TABLA */
+.year-summary-bar{background:#fff;border-radius:9px;border:1px solid var(--border);
+  padding:8px 14px;display:flex;gap:1.4rem;flex-wrap:wrap;font-size:.78rem;
+  box-shadow:var(--shadow-sm);margin-bottom:.7rem}
+.ysb-stat b{color:var(--teal)}
+table{width:100%;border-collapse:collapse;font-size:.81rem}
+thead th{background:var(--gray-light);padding:7px 10px;text-align:left;
+  font-weight:600;font-size:.73rem;border-bottom:2px solid var(--border);cursor:pointer;white-space:nowrap}
+thead th:hover{background:var(--teal-pale)}
+tbody tr{border-bottom:1px solid var(--border);transition:background .08s;cursor:pointer}
+tbody tr:hover{background:var(--teal-pale)}
+tbody td{padding:6px 10px;vertical-align:middle}
+.td-date{font-weight:600;color:var(--teal);white-space:nowrap;font-size:.76rem}
+.badge{display:inline-flex;align-items:center;padding:2px 6px;border-radius:20px;font-size:.68rem;font-weight:500}
+.b-mp{background:#dcfce7;color:#16a34a}.b-p{background:#dbeafe;color:#2563eb}
+.b-n{background:#fef9c3;color:#d97706}.b-ne{background:#fee2e2;color:#dc2626}
+.b-q{background:#f3f4f6;color:#6b7280}
+.c-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:2px}
+.c0{background:#16a34a}.c1{background:#f59e0b}.c2{background:#ef4444}
+.year-tabs{display:flex;gap:3px;background:#fff;border-radius:8px;padding:3px;
+  box-shadow:var(--shadow-sm);border:1px solid var(--border);margin-bottom:.8rem;flex-wrap:wrap}
+.yt{padding:5px 12px;border-radius:6px;border:none;font-family:inherit;
+  font-size:.8rem;font-weight:500;cursor:pointer;transition:all .12s;
+  color:var(--gray);background:transparent}
+.yt.active{background:var(--teal);color:#fff}
+
+/* ESTADO CARGA */
+.loading{display:flex;align-items:center;justify-content:center;padding:3rem;
+  font-size:.9rem;color:var(--gray);gap:.5rem}
+.spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--teal);
+  border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes su{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+
+/* DETAIL */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;
+  align-items:center;justify-content:center;padding:1rem}
+.overlay.open{display:flex}
+.panel{background:#fff;border-radius:var(--r);max-width:660px;width:100%;max-height:87vh;
+  overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:su .2s ease}
+.ph{background:linear-gradient(135deg,var(--teal),var(--teal2));color:#fff;
+  padding:1rem 1.2rem;display:flex;justify-content:space-between;align-items:flex-start;
+  border-radius:var(--r) var(--r) 0 0}
+.ph h2{font-size:1.1rem;font-weight:600}
+.ph .meta{font-size:.73rem;opacity:.78;margin-top:1px}
+.pclose{background:rgba(255,255,255,.15);border:none;color:#fff;width:26px;height:26px;
+  border-radius:6px;cursor:pointer;font-size:.85rem}
+.pb{padding:1.1rem}
+.ps{margin-bottom:.85rem}
+.ps-title{font-size:.65rem;font-weight:600;color:var(--gray);text-transform:uppercase;
+  letter-spacing:.05em;margin-bottom:.35rem}
+.d-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:.85rem}
+.d-stat{background:var(--gray-light);border-radius:8px;padding:7px 10px}
+.d-stat-val{font-size:1.1rem;font-weight:700;color:var(--teal)}
+.d-stat-label{font-size:.67rem;color:var(--gray)}
+.dtext{font-size:.82rem;color:var(--dark);line-height:1.55;background:#f4f6f9;padding:8px 10px;border-radius:8px}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{padding:2px 8px;border-radius:20px;font-size:.72rem;background:var(--teal-pale);color:var(--teal);font-weight:500}
+.chip-o{background:var(--orange-pale);color:var(--orange)}
+.chip-g{background:#f3f4f6;color:var(--gray)}
+
+/* UPLOAD LOG */
+.log-row{background:#fff;border-radius:9px;border:1px solid var(--border);padding:.65rem 1rem;
+  margin-bottom:.4rem;display:flex;align-items:center;gap:1rem;font-size:.8rem;flex-wrap:wrap}
+.log-date{color:var(--gray);font-size:.73rem;white-space:nowrap}
+.log-new{font-weight:700;color:var(--green)}
+.log-dup{color:var(--gray)}
+
+.hidden{display:none!important}
+@media(max-width:900px){.sidebar{display:none}.charts-grid{grid-column:1/-1;grid-template-columns:1fr}}
+@media(max-width:600px){.main{padding:.8rem}.kpi-grid{grid-template-columns:1fr 1fr}}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen" class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">🤝</div>
+    <div class="login-title">Jorge · Fundación HÁPTICA</div>
+    <div class="login-sub">Dashboard de seguimiento diario</div>
+    <div class="login-api-label">URL de la API (Railway)</div>
+    <input class="login-input" id="api-url" type="url"
+      placeholder="https://tu-app.railway.app" autocomplete="off">
+    <input class="login-input" id="api-pwd" type="password"
+      placeholder="Contraseña de acceso" autocomplete="current-password">
+    <button class="login-btn" onclick="doLogin()">Entrar</button>
+    <div class="login-err" id="login-err">Contraseña incorrecta o URL no válida</div>
+  </div>
+</div>
+
+<!-- APP (oculto hasta login) -->
+<div id="app" class="hidden">
+
+<header class="hdr">
+  <div class="hdr-left">
+    <div class="hdr-logo">🤝</div>
+    <div>
+      <div class="hdr-title">Jorge · Seguimiento diario</div>
+      <div class="hdr-sub" id="hdr-sub">Fundación HÁPTICA</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="hdr-stats">
+      <div class="hs"><div class="hs-val" id="hdr-total">—</div><div class="hs-label">Informes</div></div>
+      <div class="hs"><div class="hs-val" id="hdr-years">—</div><div class="hs-label">Años</div></div>
+      <div class="hs"><div class="hs-val" id="hdr-med">—</div><div class="hs-label">Mediadores</div></div>
+    </div>
+    <button class="btn-hdr" onclick="openUpload()">📂 Actualizar datos</button>
+    <button class="btn-hdr" onclick="logout()">↩ Salir</button>
+  </div>
+</header>
+
+<!-- UPLOAD MODAL -->
+<div class="modal-overlay" id="upload-modal">
+  <div class="modal">
+    <div class="modal-hdr">
+      <h3>📂 Importar chat de WhatsApp</h3>
+      <button class="modal-close" onclick="closeUpload()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:.81rem;color:var(--gray);margin-bottom:.9rem;line-height:1.5">
+        Exporta el chat desde WhatsApp <b>sin archivos multimedia</b> y sube el <code>.txt</code>.<br>
+        Solo se añadirán los informes nuevos — los existentes no se duplicarán.
+      </p>
+      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+        <div class="dz-icon">📄</div>
+        <div class="dz-text">Arrastra el .txt o haz clic para seleccionar</div>
+        <div class="dz-sub">Exportado desde WhatsApp → Sin archivos</div>
+        <input type="file" id="file-input" accept=".txt" onchange="handleUpload(this.files[0])">
+      </div>
+      <div class="prog-wrap" id="prog-wrap">
+        <div class="prog-label" id="prog-label">Subiendo...</div>
+        <div class="prog-bar"><div class="prog-fill" id="prog-fill"></div></div>
+      </div>
+      <div class="upload-result" id="upload-result">
+        <div class="ur-line" id="ur1"></div>
+        <div class="ur-line" id="ur2"></div>
+        <div class="ur-line" id="ur3"></div>
+        <div class="ur-line" id="ur4"></div>
+      </div>
+      <button class="btn-reload" id="btn-reload" onclick="reloadData()">🔄 Recargar dashboard</button>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+<aside class="sidebar">
+  <div class="sb-sec">
+    <div class="sb-label">Turno</div>
+    <div class="fg">
+      <button class="fb active" onclick="sf('turn','',this)">🕐 Todos</button>
+      <button class="fb" onclick="sf('turn','mañana',this)">🌅 Mañana</button>
+      <button class="fb" onclick="sf('turn','tarde',this)">🌇 Tarde</button>
+      <button class="fb" onclick="sf('turn','noche',this)">🌙 Noche</button>
+    </div>
+  </div>
+  <div class="sb-sec">
+    <div class="sb-label">Mediador/a</div>
+    <select id="med-sel" onchange="sf('mediator',this.value)">
+      <option value="">Todos</option>
+    </select>
+  </div>
+  <div class="sb-sec">
+    <div class="sb-label">Estado de ánimo</div>
+    <div class="fg">
+      <button class="fb active" onclick="sf('mood','',this)">✨ Todos</button>
+      <button class="fb" onclick="sf('mood','muy_positivo',this)">😄 Muy positivo</button>
+      <button class="fb" onclick="sf('mood','positivo',this)">😊 Positivo</button>
+      <button class="fb" onclick="sf('mood','neutro',this)">😐 Neutro</button>
+      <button class="fb" onclick="sf('mood','negativo',this)">😔 Negativo</button>
+    </div>
+  </div>
+  <div class="sb-sec">
+    <div class="sb-label">Conducta</div>
+    <div class="fg">
+      <button class="fb active" onclick="sf('conducta','',this)">Todos</button>
+      <button class="fb" onclick="sf('conducta','0',this)"><span class="c-dot c0"></span>Sin picos</button>
+      <button class="fb" onclick="sf('conducta','1',this)"><span class="c-dot c1"></span>Con picos</button>
+    </div>
+  </div>
+  <div class="sb-sec">
+    <div class="sb-label">Rango fechas</div>
+    <input type="date" id="df" onchange="applyFilters()">
+    <input type="date" id="dt" onchange="applyFilters()">
+  </div>
+  <button class="clear-btn" onclick="clearFilters()">↺ Limpiar filtros</button>
+</aside>
+
+<main class="main">
+  <div class="tabs">
+    <button class="tb active" onclick="showTab('overview')">📊 Resumen</button>
+    <button class="tb" onclick="showTab('list')">📋 Informes</button>
+    <button class="tb" onclick="showTab('log')">📥 Historial subidas</button>
+  </div>
+
+  <!-- OVERVIEW -->
+  <div id="tab-overview">
+    <div id="overview-content">
+      <div class="loading"><div class="spinner"></div> Cargando datos...</div>
+    </div>
+  </div>
+
+  <!-- INFORMES -->
+  <div id="tab-list" class="hidden">
+    <div id="list-content">
+      <div class="loading"><div class="spinner"></div> Cargando informes...</div>
+    </div>
+  </div>
+
+  <!-- LOG SUBIDAS -->
+  <div id="tab-log" class="hidden">
+    <div id="log-content">
+      <div class="loading"><div class="spinner"></div> Cargando historial...</div>
+    </div>
+  </div>
+</main>
+</div><!-- layout -->
+
+</div><!-- app -->
+
+<!-- DETAIL OVERLAY -->
+<div class="overlay" id="overlay" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="panel" id="panel">
+    <div class="ph"><div><h2 id="det-title">Informe</h2><div class="meta" id="det-meta"></div></div>
+    <button class="pclose" onclick="document.getElementById('overlay').classList.remove('open')">✕</button></div>
+    <div class="pb" id="det-body"></div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG / STATE ─────────────────────────────────────────────────────────────
+let API_URL = '', API_PWD = '';
+let STATS = null, REPORTS = [], MEDIATORS = [];
+let F = {turn:'',mediator:'',mood:'',conducta:'',from:'',to:''};
+let charts = {};
+let currentListYear = 'all';
+
+const MOOD_LABEL = {muy_positivo:'😄 Muy positivo',positivo:'😊 Positivo',neutro:'😐 Neutro',negativo:'😔 Negativo','?':'⬜ Sin datos'};
+const MOOD_CLASS = {muy_positivo:'b-mp',positivo:'b-p',neutro:'b-n',negativo:'b-ne','?':'b-q'};
+const TURN_LABEL = {mañana:'Mañana',tarde:'Tarde',noche:'Noche','sin especificar':'—'};
+const MS = {muy_positivo:4,positivo:3,neutro:2,negativo:1,'?':2.5};
+
+// ── LOGIN ──────────────────────────────────────────────────────────────────────
+function doLogin() {
+  const url = document.getElementById('api-url').value.trim().replace(/\/$/, '');
+  const pwd = document.getElementById('api-pwd').value;
+  if (!url || !pwd) { showLoginErr('Rellena la URL y la contraseña'); return; }
+  API_URL = url; API_PWD = pwd;
+  document.getElementById('login-err').style.display = 'none';
+  document.getElementById('login-screen').querySelector('.login-btn').textContent = 'Verificando...';
+  fetch(`${API_URL}/api/ping`, { headers: { 'X-Password': API_PWD } })
+    .then(r => {
+      if (r.status === 401) throw new Error('auth');
+      if (!r.ok) throw new Error('server');
+      return r.json();
+    })
+    .then(d => {
+      localStorage.setItem('haptica_url', API_URL);
+      localStorage.setItem('haptica_pwd', API_PWD);
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      loadAll();
+    })
+    .catch(e => {
+      showLoginErr(e.message === 'auth' ? 'Contraseña incorrecta' : 'No se pudo conectar con la API');
+      document.getElementById('login-screen').querySelector('.login-btn').textContent = 'Entrar';
+    });
+}
+
+function showLoginErr(msg) {
+  const el = document.getElementById('login-err');
+  el.textContent = msg; el.style.display = 'block';
+  document.getElementById('login-screen').querySelector('.login-btn').textContent = 'Entrar';
+}
+
+function logout() {
+  localStorage.removeItem('haptica_url'); localStorage.removeItem('haptica_pwd');
+  API_URL = ''; API_PWD = '';
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+}
+
+// ── API HELPERS ────────────────────────────────────────────────────────────────
+function apiFetch(path, opts={}) {
+  return fetch(`${API_URL}${path}`, {
+    ...opts,
+    headers: { 'X-Password': API_PWD, ...(opts.headers||{}) }
+  });
+}
+
+function buildQuery(extra={}) {
+  const p = new URLSearchParams();
+  const all = {...F, ...extra};
+  for (const [k,v] of Object.entries(all)) if (v) p.set(k, v);
+  return p.toString() ? '?' + p.toString() : '';
+}
+
+// ── LOAD ───────────────────────────────────────────────────────────────────────
+async function loadAll() {
+  await Promise.all([loadStats(), loadMediators(), loadReports()]);
+  renderOverview();
+}
+
+async function loadStats() {
+  const r = await apiFetch('/api/stats');
+  STATS = await r.json();
+  updateHeader();
+}
+
+async function loadMediators() {
+  const r = await apiFetch('/api/mediators');
+  const d = await r.json();
+  MEDIATORS = d.mediators || [];
+  const sel = document.getElementById('med-sel');
+  sel.innerHTML = '<option value="">Todos</option>' + MEDIATORS.map(m=>`<option value="${m}">${m}</option>`).join('');
+}
+
+async function loadReports() {
+  const r = await apiFetch('/api/reports' + buildQuery());
+  const d = await r.json();
+  REPORTS = d.reports || [];
+}
+
+function updateHeader() {
+  if (!STATS?.summary) return;
+  const s = STATS.summary;
+  document.getElementById('hdr-total').textContent = s.total?.toLocaleString() || '—';
+  const years = new Set((STATS.monthly||[]).map(m=>m.month.slice(0,4)));
+  document.getElementById('hdr-years').textContent = years.size || '—';
+  document.getElementById('hdr-med').textContent = (STATS.by_mediator||[]).length || '—';
+  document.getElementById('hdr-sub').textContent = `Fundación HÁPTICA · ${s.date_from||''} → ${s.date_to||''}`;
+}
+
+// ── FILTERS ───────────────────────────────────────────────────────────────────
+function sf(key, val, btn) {
+  F[key] = val;
+  if (btn) {
+    const g = btn.closest('.fg');
+    if (g) g.querySelectorAll('.fb').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  applyFilters();
+}
+
+async function applyFilters() {
+  F.from = document.getElementById('df').value;
+  F.to   = document.getElementById('dt').value;
+  await loadReports();
+  const tab = document.querySelector('.tb.active')?.textContent?.trim();
+  if (tab?.includes('Informes')) renderList();
+  else renderOverview();
+}
+
+function clearFilters() {
+  F = {turn:'',mediator:'',mood:'',conducta:'',from:'',to:''};
+  document.getElementById('med-sel').value = '';
+  document.getElementById('df').value = '';
+  document.getElementById('dt').value = '';
+  document.querySelectorAll('.fg').forEach(g=>g.querySelectorAll('.fb').forEach((b,i)=>b.classList.toggle('active',i===0)));
+  applyFilters();
+}
+
+// ── TABS ───────────────────────────────────────────────────────────────────────
+function showTab(t) {
+  ['overview','list','log'].forEach(id => {
+    document.getElementById('tab-'+id).classList.toggle('hidden', id!==t);
+  });
+  document.querySelectorAll('.tb').forEach((b,i)=>b.classList.toggle('active',['overview','list','log'][i]===t));
+  if (t==='overview') renderOverview();
+  if (t==='list') renderList();
+  if (t==='log') renderLog();
+}
+
+// ── RENDER OVERVIEW ────────────────────────────────────────────────────────────
+function renderOverview() {
+  if (!STATS) return;
+  const s = STATS.summary;
+  const monthly = [...(STATS.monthly||[])].sort((a,b)=>a.month<b.month?-1:1);
+  const html = `
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-ico">📝</div><div class="kpi-val">${s.total?.toLocaleString()||'—'}</div><div class="kpi-label">Informes totales</div><div class="kpi-sub">${s.date_from||''} → ${s.date_to||''}</div></div>
+      <div class="kpi"><div class="kpi-ico">💧</div><div class="kpi-val">${s.avg_agua||'—'}</div><div class="kpi-label">ml agua/día</div></div>
+      <div class="kpi"><div class="kpi-ico">⚡</div><div class="kpi-val">${s.pct_sin_picos||'—'}%</div><div class="kpi-label">% sin picos</div></div>
+      <div class="kpi"><div class="kpi-ico">😊</div><div class="kpi-val">${s.pct_positivo||'—'}%</div><div class="kpi-label">% estado positivo</div></div>
+      <div class="kpi"><div class="kpi-ico">👥</div><div class="kpi-val">${s.n_mediators||'—'}</div><div class="kpi-label">Mediadores</div></div>
+      <div class="kpi"><div class="kpi-ico">📈</div><div class="kpi-val">${s.avg_mood||'—'}</div><div class="kpi-label">Ánimo medio (1–4)</div></div>
+    </div>
+    <div class="charts-grid">
+      <div class="cc"><div class="cc-title">😊 Estado de ánimo mensual</div><div class="cw tall"><canvas id="ch-mood"></canvas></div></div>
+      <div class="cc"><div class="cc-title">👥 Informes por mediador/a</div><div class="cw tall"><canvas id="ch-med"></canvas></div></div>
+      <div class="cc"><div class="cc-title">💧 Hidratación media mensual</div><div class="cw"><canvas id="ch-agua"></canvas></div></div>
+      <div class="cc"><div class="cc-title">⚡ % Picos de conducta por mes</div><div class="cw"><canvas id="ch-cond"></canvas></div></div>
+    </div>`;
+  document.getElementById('overview-content').innerHTML = html;
+  requestAnimationFrame(()=>{
+    renderMoodChart(monthly);
+    renderMedChart();
+    renderAguaChart(monthly);
+    renderCondChart(monthly);
+  });
+}
+
+function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+
+function renderMoodChart(monthly){
+  dc('mood');
+  const labels = monthly.slice(-30).map(m=>m.month.replace('-','/'));
+  const data   = monthly.slice(-30).map(m=>m.avg_mood);
+  charts['mood'] = new Chart(document.getElementById('ch-mood').getContext('2d'),{
+    type:'line',
+    data:{labels,datasets:[{data,borderColor:'#2A7F7F',backgroundColor:'rgba(42,127,127,.1)',tension:.4,fill:true,pointRadius:2}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{y:{min:1,max:4,ticks:{callback:v=>[,'😔','😐','😊','😄'][Math.round(v)]||v}},x:{ticks:{font:{size:8},maxRotation:45}}}}
+  });
+}
+function renderMedChart(){
+  dc('med');
+  const data = (STATS.by_mediator||[]).slice(0,12);
+  const pal  = ['#2A7F7F','#E8833A','#7c3aed','#16a34a','#2563eb','#dc2626','#d97706','#0891b2','#be185d','#65a30d','#9333ea','#0d9488'];
+  charts['med'] = new Chart(document.getElementById('ch-med').getContext('2d'),{
+    type:'doughnut',
+    data:{labels:data.map(d=>d.mediator),datasets:[{data:data.map(d=>d.total),backgroundColor:pal,borderWidth:2,borderColor:'#fff'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:8.5},boxWidth:10}}}}
+  });
+}
+function renderAguaChart(monthly){
+  dc('agua');
+  const labels = monthly.map(m=>m.month.replace('-','/'));
+  const data   = monthly.map(m=>m.avg_agua||null);
+  charts['agua'] = new Chart(document.getElementById('ch-agua').getContext('2d'),{
+    type:'bar',
+    data:{labels,datasets:[{data,backgroundColor:data.map(v=>v&&v>=600?'rgba(42,127,127,.7)':'rgba(232,131,58,.7)'),borderRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{y:{ticks:{callback:v=>v+'ml'}},x:{ticks:{font:{size:8},maxRotation:45}}}}
+  });
+}
+function renderCondChart(monthly){
+  dc('cond');
+  const labels = monthly.map(m=>m.month.replace('-','/'));
+  charts['cond'] = new Chart(document.getElementById('ch-cond').getContext('2d'),{
+    type:'line',
+    data:{labels,datasets:[{data:monthly.map(m=>m.pct_picos),borderColor:'#E8833A',backgroundColor:'rgba(232,131,58,.1)',tension:.4,fill:true,pointRadius:2}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%'}},x:{ticks:{font:{size:8},maxRotation:45}}}}
+  });
+}
+
+// ── RENDER LIST ────────────────────────────────────────────────────────────────
+function renderList() {
+  const years = ['all', ...[...new Set(REPORTS.map(r=>r.date.slice(0,4)))].sort().reverse()];
+  const filtered = currentListYear==='all' ? REPORTS : REPORTS.filter(r=>r.date.startsWith(currentListYear));
+
+  const ysEl = `<div class="year-tabs">${years.map(y=>`
+    <button class="yt${y===currentListYear?' active':''}" onclick="setListYear('${y}')">
+      ${y==='all'?'Todos':y}
+      <span style="font-size:.68rem;opacity:.7;margin-left:2px">${y==='all'?REPORTS.length:REPORTS.filter(r=>r.date.startsWith(y)).length}</span>
+    </button>`).join('')}</div>`;
+
+  const ms = {muy_positivo:4,positivo:3,neutro:2,negativo:1,'?':2.5};
+  const moods  = filtered.map(r=>ms[r.mood]||2.5);
+  const avgM   = moods.length ? (moods.reduce((a,b)=>a+b,0)/moods.length).toFixed(2) : '—';
+  const pctPos = filtered.length ? Math.round(filtered.filter(r=>r.mood==='positivo'||r.mood==='muy_positivo').length/filtered.length*100) : '—';
+  const pctP   = filtered.length ? Math.round(filtered.filter(r=>r.conducta>0).length/filtered.length*100) : '—';
+  const aguas  = filtered.filter(r=>r.agua&&r.agua<3000).map(r=>r.agua);
+  const avgA   = aguas.length ? Math.round(aguas.reduce((a,b)=>a+b,0)/aguas.length)+'ml' : '—';
+  const meds   = new Set(filtered.map(r=>r.mediator)).size;
+
+  const summaryEl = `<div class="year-summary-bar">
+    <span class="ysb-stat">📊 <b>${filtered.length}</b> informes</span>
+    <span class="ysb-stat">😊 Ánimo: <b>${avgM}</b></span>
+    <span class="ysb-stat">😊 Positivos: <b>${pctPos}%</b></span>
+    <span class="ysb-stat">⚡ Picos: <b>${pctP}%</b></span>
+    <span class="ysb-stat">💧 Agua: <b>${avgA}</b></span>
+    <span class="ysb-stat">👥 <b>${meds}</b> mediadores</span>
+  </div>`;
+
+  const rows = filtered.map((r,i)=>`
+    <tr onclick="openDetail(${i})">
+      <td class="td-date">${r.date}</td>
+      <td style="font-size:.75rem">${TURN_LABEL[r.turn]||r.turn||'—'}</td>
+      <td style="font-size:.78rem;max-width:95px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.mediator}</td>
+      <td><span class="badge ${MOOD_CLASS[r.mood]||'b-q'}" style="font-size:.65rem">${MOOD_LABEL[r.mood]?.split(' ').slice(-1)[0]||'?'}</span></td>
+      <td><span class="c-dot ${r.conducta===0?'c0':r.conducta<=1?'c1':'c2'}"></span>${r.conducta||0}</td>
+      <td style="font-size:.75rem">${r.agua?r.agua+'ml':'—'}</td>
+      <td style="font-size:.72rem;color:var(--gray);max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(r.vocab||[]).slice(0,3).join(', ')||'—'}</td>
+    </tr>`).join('');
+
+  document.getElementById('list-content').innerHTML = `
+    ${ysEl}${summaryEl}
+    <div style="background:#fff;border-radius:var(--r);box-shadow:var(--shadow-sm);border:1px solid var(--border);overflow:hidden">
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Fecha</th><th>Turno</th><th>Mediador/a</th>
+            <th>Estado</th><th>Conducta</th><th>Agua</th><th>Vocabulario</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function setListYear(y) { currentListYear = y; renderList(); }
+
+// ── RENDER LOG ─────────────────────────────────────────────────────────────────
+async function renderLog() {
+  document.getElementById('log-content').innerHTML = '<div class="loading"><div class="spinner"></div> Cargando...</div>';
+  const r = await apiFetch('/api/upload-log');
+  const d = await r.json();
+  const logs = d.logs || [];
+  if (!logs.length) {
+    document.getElementById('log-content').innerHTML = '<div class="loading">No hay subidas registradas</div>';
+    return;
+  }
+  document.getElementById('log-content').innerHTML =
+    `<h3 style="font-size:.88rem;font-weight:600;margin-bottom:.7rem;color:var(--dark)">Últimas subidas de datos</h3>` +
+    logs.map(l=>`
+      <div class="log-row">
+        <span class="log-date">${l.uploaded_at?.slice(0,16).replace('T',' ')||'—'}</span>
+        <span>📊 ${l.total_in_file} en archivo</span>
+        <span class="log-new">✅ +${l.new_inserted} nuevos</span>
+        <span class="log-dup">♻️ ${l.duplicates} duplicados</span>
+        <span style="font-size:.73rem;color:var(--gray)">${l.date_from||''} → ${l.date_to||''}</span>
+        <span style="font-size:.73rem;color:var(--gray)">por ${l.uploaded_by||'—'}</span>
+      </div>`).join('');
+}
+
+// ── UPLOAD ─────────────────────────────────────────────────────────────────────
+function openUpload() { document.getElementById('upload-modal').classList.add('open'); resetUpload(); }
+function closeUpload() { document.getElementById('upload-modal').classList.remove('open'); }
+function resetUpload() {
+  document.getElementById('prog-wrap').style.display='none';
+  document.getElementById('upload-result').style.display='none';
+  document.getElementById('btn-reload').style.display='none';
+  document.getElementById('prog-fill').style.width='0%';
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover', e=>{e.preventDefault();dz.classList.add('drag-over');});
+  dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e=>{e.preventDefault();dz.classList.remove('drag-over');if(e.dataTransfer.files[0])handleUpload(e.dataTransfer.files[0]);});
+
+  // Auto-login si hay credenciales guardadas
+  const savedUrl = localStorage.getItem('haptica_url');
+  const savedPwd = localStorage.getItem('haptica_pwd');
+  if (savedUrl && savedPwd) {
+    document.getElementById('api-url').value = savedUrl;
+    document.getElementById('api-pwd').value = savedPwd;
+    API_URL = savedUrl; API_PWD = savedPwd;
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    loadAll();
+  }
+});
+
+function setProgress(pct, label) {
+  document.getElementById('prog-fill').style.width = pct+'%';
+  if (label) document.getElementById('prog-label').textContent = label;
+}
+
+async function handleUpload(file) {
+  if (!file || !file.name.endsWith('.txt')) { alert('Sube un archivo .txt exportado de WhatsApp'); return; }
+  document.getElementById('prog-wrap').style.display='block';
+  setProgress(20,'Subiendo archivo...');
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    setProgress(50, 'Procesando en servidor...');
+    const r = await fetch(`${API_URL}/api/upload`, {
+      method: 'POST',
+      headers: { 'X-Password': API_PWD, 'X-User': 'dashboard' },
+      body: formData
+    });
+    setProgress(90, 'Finalizando...');
+    const d = await r.json();
+    setProgress(100, 'Listo');
+
+    const res = document.getElementById('upload-result');
+    res.style.display = 'block';
+    res.classList.toggle('error', !d.ok);
+
+    if (d.ok) {
+      document.getElementById('ur1').innerHTML = `📊 Total en archivo: <b>${d.total_in_file}</b>`;
+      document.getElementById('ur2').innerHTML = `✅ Informes nuevos: <b>${d.new_inserted}</b>`;
+      document.getElementById('ur3').innerHTML = `♻️ Ya registrados: <b>${d.duplicates}</b>`;
+      document.getElementById('ur4').innerHTML = `📅 Rango: <b>${d.date_from} → ${d.date_to}</b>`;
+      if (d.new_inserted > 0) document.getElementById('btn-reload').style.display = 'block';
+    } else {
+      document.getElementById('ur1').innerHTML = `❌ Error: ${d.error}`;
+      ['ur2','ur3','ur4'].forEach(id=>document.getElementById(id).innerHTML='');
+    }
+  } catch(e) {
+    setProgress(0,'');
+    const res = document.getElementById('upload-result');
+    res.style.display='block'; res.classList.add('error');
+    document.getElementById('ur1').innerHTML = `❌ Error de conexión: ${e.message}`;
+  }
+}
+
+async function reloadData() {
+  closeUpload();
+  await loadAll();
+  showTab('overview');
+}
+
+// ── DETAIL ─────────────────────────────────────────────────────────────────────
+function openDetail(idx) {
+  const r = REPORTS[idx]; if (!r) return;
+  document.getElementById('det-title').textContent = `Informe ${r.date}`;
+  document.getElementById('det-meta').textContent = `${r.mediator} · ${TURN_LABEL[r.turn]||r.turn||'—'}`;
+  const vocab = Array.isArray(r.vocab) ? r.vocab : (typeof r.vocab==='string'?JSON.parse(r.vocab):[]);
+  document.getElementById('det-body').innerHTML = `
+    <div class="d-grid">
+      <div class="d-stat"><div class="d-stat-val"><span class="badge ${MOOD_CLASS[r.mood]||'b-q'}">${MOOD_LABEL[r.mood]||'?'}</span></div><div class="d-stat-label">Estado ánimo</div></div>
+      <div class="d-stat"><div class="d-stat-val">${r.agua?r.agua+'ml':'—'}</div><div class="d-stat-label">Hidratación</div></div>
+      <div class="d-stat"><div class="d-stat-val">${r.conducta||0} pico${r.conducta!==1?'s':''}</div><div class="d-stat-label">Conducta</div></div>
+      <div class="d-stat"><div class="d-stat-val">${r.pis!=null?r.pis:'—'}</div><div class="d-stat-label">Pis (veces)</div></div>
+    </div>
+    ${r.estado?`<div class="ps"><div class="ps-title">🌡️ Estado</div><div class="dtext">${r.estado}</div></div>`:''}
+    ${r.comunicacion?`<div class="ps"><div class="ps-title">💬 Comunicación</div><div class="dtext">${r.comunicacion}</div></div>`:''}
+    ${vocab.length?`<div class="ps"><div class="ps-title">🗣️ Vocabulario</div><div class="chips">${vocab.map(w=>`<span class="chip">${w}</span>`).join('')}</div></div>`:''}
+    ${r.actividades?`<div class="ps"><div class="ps-title">🎯 Actividades</div><div class="dtext">${r.actividades}</div></div>`:''}
+    ${r.comidas?`<div class="ps"><div class="ps-title">🍽️ Comidas</div><div class="dtext">${r.comidas}</div></div>`:''}
+    ${r.medicacion?`<div class="ps"><div class="ps-title">💊 Medicación</div><div class="dtext">${r.medicacion}</div></div>`:''}
+    ${r.notas?`<div class="ps"><div class="ps-title">📝 Notas</div><div class="dtext">${r.notas}</div></div>`:''}`;
+  document.getElementById('overlay').classList.add('open');
+}
+</script>
+</body>
+</html>
