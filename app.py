@@ -1,18 +1,23 @@
-"""
-Fundación HÁPTICA — API de seguimiento de Jorge
-Flask + PostgreSQL en Railway (Versión Completa y Corregida)
-"""
 import os, json, hashlib
 from functools import wraps
 from datetime import datetime
-
 from flask import Flask, request, jsonify, g, send_file
 from flask_cors import CORS
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
+# Intentar importar psycopg2 de forma segura
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    PS_AVAILABLE = True
+except ImportError:
+    PS_AVAILABLE = False
+    print("ALERTA: No se pudo cargar psycopg2. libpq.so.5 ausente.")
+
 from parser import parse_whatsapp
+
+load_dotenv()
+app = Flask(__name__)
 
 # 1. INICIALIZACIÓN (Crítico: Definir 'app' antes que las rutas)
 load_dotenv()
