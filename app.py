@@ -118,8 +118,9 @@ def init_db():
         """)
         db.commit(); cur.close(); db.close()
         print("DB lista")
-        auto_seed()
-        normalize_existing_mediators()
+        import threading
+        threading.Thread(target=auto_seed, daemon=True).start()
+        threading.Thread(target=normalize_existing_mediators, daemon=True).start()
     except Exception as e:
         print(f"init_db error: {e}")
 
