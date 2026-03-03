@@ -448,41 +448,15 @@ function apiFetch(path, opts) {
 }
 
 // ── CARGA DE DATOS ────────────────────────────────────────────────────────────
-async function loadAll() {
-  try { await Promise.allSettled([loadStats(), loadMediators(), loadReports()]); }
-  catch(e) { console.warn('loadAll:', e); }
-  renderOverview();
-}
-
-async function loadStats() {
-  try {
-    var r = await apiFetch('/api/stats');
-    STATS = await r.json();
-    updateHeader();
-  } catch(e) {
-    console.warn('loadStats:', e);
-    STATS = {summary:{},monthly:[],by_mediator:[],annotations:[]};
-  }
-}
-
-async function loadMediators() {
-  try {
-    var r = await apiFetch('/api/mediators');
-    var d = await r.json();
-    MEDIATORS = d.mediators || [];
-    var sel = document.getElementById('med-sel');
-    sel.innerHTML = '<option value="">Todos</option>' + MEDIATORS.map(function(m) {
-      return '<option value="' + m + '">' + m + '</option>';
-    }).join('');
-  } catch(e) { console.warn('loadMediators:', e); }
-}
-
-async function loadReports() {
-  try {
-    var r = await apiFetch('/api/reports' + buildQuery());
-    var d = await r.json();
-    REPORTS = d.reports || [];
-  } catch(e) { console.warn('loadReports:', e); REPORTS = []; }
+function loadAll() {
+  var p1 = apiFetch('/api/stats').then(function(r){return r.json();}).then(function(d){STATS=d;updateHeader();}).catch(function(e){console.warn('stats:',e);STATS={summary:{},monthly:[],by_mediator:[],annotations:[]};});
+  var p2 = apiFetch('/api/mediators').then(function(r){return r.json();}).then(function(d){
+    MEDIATORS=d.mediators||[];
+    var sel=document.getElementById('med-sel');
+    sel.innerHTML='<option value="">Todos</option>'+MEDIATORS.map(function(m){return '<option value="'+m+'">'+m+'</option>';}).join('');
+  }).catch(function(e){console.warn('mediators:',e);});
+  var p3 = apiFetch('/api/reports'+buildQuery()).then(function(r){return r.json();}).then(function(d){REPORTS=d.reports||[];}).catch(function(e){console.warn('reports:',e);REPORTS=[];});
+  Promise.all([p1,p2,p3]).then(function(){renderOverview();}).catch(function(){renderOverview();});
 }
 
 function buildQuery(extra) {
@@ -522,9 +496,8 @@ function sf(key, val, btn) {
   }
 }
 
-async function applyFilters() {
-  await loadReports();
-  renderOverview();
+function applyFilters() {
+  apiFetch('/api/reports'+buildQuery()).then(function(r){return r.json();}).then(function(d){REPORTS=d.reports||[];renderOverview();}).catch(function(){renderOverview();});
 }
 
 function clearFilters() {
@@ -693,7 +666,7 @@ function renderList() {
 function setListYear(y) { currentListYear = y; renderList(); }
 
 // ── LOG SUBIDAS ───────────────────────────────────────────────────────────────
-async function renderLog() {
+function renderLog() {
   var el = document.getElementById('log-content');
   el.innerHTML = '<div class="loading"><div class="spinner"></div> Cargando...</div>';
   var logs = (STATS && STATS.upload_log) || [];
@@ -759,41 +732,39 @@ function setProgress(pct, label) {
   if (label) document.getElementById('prog-label').textContent = label;
 }
 
-async function handleUpload(file) {
+function handleUpload(file) {
   if (!file || !file.name.endsWith('.txt')) { alert('Sube un archivo .txt exportado de WhatsApp'); return; }
   document.getElementById('prog-wrap').style.display='block';
   setProgress(20,'Subiendo archivo...');
   var formData = new FormData();
   formData.append('file', file);
-  try {
-    setProgress(50, 'Procesando...');
-    var r = await fetch(API_URL+'/api/upload', {
-      method:'POST', headers:{'X-Password':API_PWD}, body:formData
+  setProgress(50,'Procesando...');
+  fetch(API_URL+'/api/upload', {method:'POST',headers:{'X-Password':API_PWD},body:formData})
+    .then(function(r){setProgress(90,'Finalizando...');return r.json();})
+    .then(function(d){
+      setProgress(100,'Listo');
+      var res=document.getElementById('upload-result');
+      res.style.display='block'; res.classList.toggle('error',!d.ok);
+      if(d.ok){
+        document.getElementById('ur1').innerHTML='📊 Total: <b>'+d.total_in_file+'</b>';
+        document.getElementById('ur2').innerHTML='✅ Nuevos: <b>'+d.new_inserted+'</b>';
+        document.getElementById('ur3').innerHTML='♻️ Duplicados: <b>'+d.duplicates+'</b>';
+        document.getElementById('ur4').innerHTML='📅 Rango: <b>'+d.date_from+' → '+d.date_to+'</b>';
+        if(d.new_inserted>0) document.getElementById('btn-reload').style.display='block';
+      } else {
+        document.getElementById('ur1').innerHTML='❌ Error: '+d.error;
+      }
+    })
+    .catch(function(e){
+      var res=document.getElementById('upload-result');
+      res.style.display='block'; res.classList.add('error');
+      document.getElementById('ur1').innerHTML='❌ Error: '+e.message;
     });
-    setProgress(90,'Finalizando...');
-    var d = await r.json();
-    setProgress(100,'Listo');
-    var res = document.getElementById('upload-result');
-    res.style.display='block'; res.classList.toggle('error',!d.ok);
-    if(d.ok) {
-      document.getElementById('ur1').innerHTML='📊 Total en archivo: <b>'+d.total_in_file+'</b>';
-      document.getElementById('ur2').innerHTML='✅ Informes nuevos: <b>'+d.new_inserted+'</b>';
-      document.getElementById('ur3').innerHTML='♻️ Ya registrados: <b>'+d.duplicates+'</b>';
-      document.getElementById('ur4').innerHTML='📅 Rango: <b>'+d.date_from+' → '+d.date_to+'</b>';
-      if(d.new_inserted>0) document.getElementById('btn-reload').style.display='block';
-    } else {
-      document.getElementById('ur1').innerHTML='❌ Error: '+d.error;
-    }
-  } catch(e) {
-    var res=document.getElementById('upload-result');
-    res.style.display='block'; res.classList.add('error');
-    document.getElementById('ur1').innerHTML='❌ Error: '+e.message;
-  }
 }
 
-async function reloadData() {
+function reloadData() {
   closeUpload();
-  await loadAll();
+  loadAll();
   showTab('overview');
 }
 
@@ -820,7 +791,7 @@ function renderAnnList() {
   }).join('');
 }
 
-async function saveAnnotation() {
+function saveAnnotation() {
   var date=document.getElementById('ann-date').value;
   var label=document.getElementById('ann-label').value.trim();
   var desc=document.getElementById('ann-desc').value.trim();
@@ -828,23 +799,26 @@ async function saveAnnotation() {
   var msg=document.getElementById('ann-msg');
   if(!date||!label){msg.style.color='#dc2626';msg.textContent='Fecha y etiqueta obligatorias.';return;}
   msg.style.color='#6b7280';msg.textContent='Guardando...';
-  try {
-    var r=await apiFetch('/api/annotations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,label,description:desc,color,type:'event'})});
-    var d=await r.json();
-    if(d.ok){
-      msg.style.color='#16a34a';msg.textContent='✅ Guardada';
-      document.getElementById('ann-label').value='';
-      document.getElementById('ann-desc').value='';
-      await loadStats();renderAnnList();renderOverview();
-      setTimeout(function(){msg.textContent='';},2000);
-    }
-  } catch(e){msg.style.color='#dc2626';msg.textContent='Error: '+e.message;}
+  apiFetch('/api/annotations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:date,label:label,description:desc,color:color,type:'event'})})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.ok){
+        msg.style.color='#16a34a';msg.textContent='✅ Guardada';
+        document.getElementById('ann-label').value='';
+        document.getElementById('ann-desc').value='';
+        apiFetch('/api/stats').then(function(r){return r.json();}).then(function(d){STATS=d;updateHeader();renderAnnList();renderOverview();});
+        setTimeout(function(){msg.textContent='';},2000);
+      }
+    })
+    .catch(function(e){msg.style.color='#dc2626';msg.textContent='Error: '+e.message;});
 }
 
-async function deleteAnnotation(id) {
+function deleteAnnotation(id) {
   if(!confirm('¿Eliminar esta anotación?'))return;
-  await apiFetch('/api/annotations/'+id,{method:'DELETE'});
-  await loadStats();renderAnnList();renderOverview();
+  apiFetch('/api/annotations/'+id,{method:'DELETE'})
+    .then(function(){return apiFetch('/api/stats');})
+    .then(function(r){return r.json();})
+    .then(function(d){STATS=d;updateHeader();renderAnnList();renderOverview();});
 }
 </script>
 </body>

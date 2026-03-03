@@ -195,7 +195,11 @@ def health():
 @app.route('/dashboard')
 @app.route('/dashboard/')
 def frontend():
-    return send_file('index.html')
+    from flask import make_response
+    resp = make_response(send_file('index.html'))
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    return resp
 
 @app.route('/api/ping')
 def ping():
