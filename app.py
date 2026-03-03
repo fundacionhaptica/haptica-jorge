@@ -249,18 +249,27 @@ def upload():
     reports = parse_whatsapp(text)
     if not reports:
         return jsonify({'error': 'No se encontraron informes'}), 400
+
+    # Calcular seq por (date, mediator, turn)
+    from collections import Counter
+    day_counts = Counter()
+    for r in reports:
+        key = (r['date'], normalize_mediator(r['mediator']), r['turn'])
+        day_counts[key] += 1
+        r['_seq'] = day_counts[key]
+
     db = get_db(); cur = db.cursor()
     inserted = duplicates = 0
     for r in reports:
         med = normalize_mediator(r['mediator'])
         try:
             cur.execute("""INSERT INTO reports
-                (date,mediator,turn,mood,conducta,estiramientos,agua,pis,
+                (date,mediator,turn,seq,mood,conducta,estiramientos,agua,pis,
                  banyo,estado,comunicacion,actividades,comidas,medicacion,
                  notas,vocab,formato,body_preview)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (date,mediator,turn,seq) DO NOTHING""",
-                (r['date'], med, r['turn'], r['mood'], r['conducta'],
+                (r['date'], med, r['turn'], r['_seq'], r['mood'], r['conducta'],
                  r['estiramientos'], r['agua'], r['pis'], r['banyo'], r['estado'],
                  r['comunicacion'], r['actividades'], r['comidas'], r['medicacion'],
                  r['notas'], json.dumps(r['vocab'], ensure_ascii=False),
@@ -276,6 +285,7 @@ def upload():
     db.commit()
     return jsonify({'ok': True, 'total_in_file': len(reports), 'new_inserted': inserted,
                     'duplicates': duplicates, 'date_from': dates[0], 'date_to': dates[-1]})
+
 
 @app.route('/api/reports')
 @require_auth
