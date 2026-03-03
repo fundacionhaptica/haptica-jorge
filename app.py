@@ -146,48 +146,48 @@ def init_db():
 
 def auto_seed():
     seed_file = os.path.join(os.path.dirname(__file__), 'seed.json')
-    if not os.path.exists(seed_file): return
+    if not os.path.exists(seed_file):
+        print("auto_seed: seed.json no encontrado, skip")
+        return
     try:
         db = psycopg2.connect(DATABASE_URL)
         cur = db.cursor()
-        cur.execute("SELECT COUNT(*) as n FROM reports WHERE date < '2022-01-01'")
-        pre2022 = cur.fetchone()[0]
-        cur.execute('SELECT COUNT(*) as n FROM reports')
+        cur.execute('SELECT COUNT(*) FROM reports')
         n = cur.fetchone()[0]
-        if n > 0 and pre2022 > 0:
-            print(f"DB tiene {n} registros ({pre2022} pre-2022), skip seed")
+        if n > 100:
+            print(f"auto_seed: BD tiene {n} registros, skip")
             cur.close(); db.close(); return
-        if n > 0 and pre2022 == 0:
-            print(f"DB sin datos pre-2022, recargando seed completo...")
-            cur.execute('DELETE FROM reports')
-            db.commit()
-        print("Cargando seed.json...")
+        print(f"auto_seed: BD vacía ({n}), cargando seed...")
         with open(seed_file, encoding='utf-8') as f:
             data = json.load(f)
         inserted = 0
         for r in data:
-            med = normalize_mediator(r.get('mediator', ''))
             try:
                 cur.execute("""INSERT INTO reports
-                    (date,mediator,turn,mood,conducta,estiramientos,agua,pis,
+                    (date,mediator,turn,seq,mood,conducta,estiramientos,agua,pis,
                      banyo,estado,comunicacion,actividades,comidas,medicacion,
                      notas,vocab,formato,body_preview)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     ON CONFLICT (date,mediator,turn,seq) DO NOTHING""",
-                    (r.get('date'), med, r.get('turn','sin especificar'),
+                    (r.get('date'), r.get('mediator',''),
+                     r.get('turn','sin especificar'), r.get('seq',1),
                      r.get('mood','?'), r.get('conducta',0), r.get('estiramientos',0),
-                     r.get('agua'), r.get('pis'), r.get('banyo',''), r.get('estado',''),
-                     r.get('comunicacion',''), r.get('actividades',''), r.get('comidas',''),
+                     r.get('agua'), r.get('pis'), r.get('banyo',''),
+                     r.get('estado',''), r.get('comunicacion',''),
+                     r.get('actividades',''), r.get('comidas',''),
                      r.get('medicacion',''), r.get('notas',''),
                      json.dumps(r.get('vocab',[]), ensure_ascii=False),
                      r.get('formato','v1'), r.get('body_preview','')[:300]))
                 if cur.rowcount > 0: inserted += 1
-            except: db.rollback()
+            except Exception as e:
+                db.rollback()
+                continue
         db.commit()
-        print(f"Seed: {inserted} registros")
         cur.close(); db.close()
+        print(f"auto_seed: {inserted}/{len(data)} registros insertados")
     except Exception as e:
         print(f"auto_seed error: {e}")
+
 
 def normalize_existing_mediators():
     """Normaliza los nombres de mediadores ya en BD."""
