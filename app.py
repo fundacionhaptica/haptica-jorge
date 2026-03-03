@@ -24,46 +24,56 @@ ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'hapticaadmin2025')
 
 # Normalización de nombres de mediadores
 NAME_MAP = {
-    'Mediador Raúl Blasco': 'Raúl Blasco',
-    'Javier Cuidador': 'Javier',
-    'Jonathan Cuidador': 'Jonathan',
-    'Mediadora Eva Miguel Mediadora Eva Miguel': 'Eva Miguel',
-    'Mapi Martinez Clerigué': 'Mapi Martínez',
-    'Maria Jesus Morales': 'María Jesús (familia)',
-    'Mediador Eli': 'Eli',
-    'Ari Mediadora': 'Ari',
-    'Greg Mediador': 'Gregory',
-    'Elena  Mediadora': 'Elena',
-    'Ainhoa Mediadora': 'Ainhoa',
-    'Belen Auqui Mediador': 'Belén Auqui',
-    'Irene Irene Buera': 'Irene Buera',
-    'Irene Mediadora': 'Irene',
-    'Laura Sobrino': 'Laura',
-    'Mediadora Rebeca Burillo': 'Rebeca',
-    'Mediadora  Maria': 'María',
-    'Leyre Mediadora': 'Leyre',
-    'Carmen Asensio Gerente': 'Carmen (dirección)',
-    'Amalia Mediadora': 'Amalia',
-    'Delia Mediadora': 'Delia',
-    'Mediadora Sofi': 'Sophie',
-    'Fran Cuidador': 'Franklin',
-    'Karol Mediadora': 'Karol',
-    'Carla Mediadora': 'Carla',
-    'Dulce Mediadora': 'Dulce Alef',
-    'Alicia Mediadora': 'Alicia',
-    'Veronica Mediadora': 'Verónica',
-    'Alba Mediadora': 'Alba',
-    'Adri': 'Adri',
-    'Luna Mediadora': 'Luna',
-    'Paula Monge': 'Paula',
-    'Vanessa ✨': 'Vanessa',
-    'Blanca Yunquera': 'Blanca',
-    'Angel España Morales': 'Ángel (familia)',
-    'Susana España': 'Susana (familia)',
-    'Maria España': 'María (familia)',
-    'Carlos De Paz': 'Carlos',
+    # ── FAMILIA ──
+    'Maria Jesus Morales':                       'María Jesús (familia)',
+    'AA Mamá':                                   'María Jesús (familia)',
+    'Angel España Morales':                      'Ángel (familia)',
+    'Susana España':                             'Susana (familia)',
+    'Maria España':                              'María (familia)',
+    # ── MEDIADORES ──
+    'Mediador Raúl Blasco':                      'Raúl Blasco',
+    'Javier Cuidador':                           'Javier',
+    'Jonathan Cuidador':                         'Jonathan',
+    'Mediadora Eva Miguel Mediadora Eva Miguel':  'Eva Miguel',
+    'Mediadora Eva Miguel':                      'Eva Miguel',
+    'Mapi Martinez Clerigué':                    'Mapi Martínez',
+    'Mapi Martinez':                             'Mapi Martínez',
+    'Mediador Eli':                              'Eli',
+    'Ari Mediadora':                             'Ari',
+    'Greg Mediador':                             'Gregory',
+    'gregorioalexander':                         'Gregory',
+    'Elena  Mediadora':                          'Elena',
+    'Elena Mediadora':                           'Elena',
+    'Ainhoa Mediadora':                          'Ainhoa',
+    'Belen Auqui Mediador':                      'Belén Auqui',
+    'Belen':                                     'Belén Auqui',
+    'Belén':                                     'Belén Auqui',
+    'Irene Irene Buera':                         'Irene Buera',
+    'Laura Sobrino':                             'Laura',
+    'Mediadora Rebeca Burillo':                  'Rebeca',
+    'Mediadora  Maria':                          'María',
+    'Mediadora Maria':                           'María',
+    'Leyre Mediadora':                           'Leyre',
+    'Carmen Asensio Gerente':                    'Carmen (dirección)',
+    'Carmen Asensio':                            'Carmen (dirección)',
+    'Amalia Mediadora':                          'Amalia',
+    'Delia Mediadora':                           'Delia',
+    'Mediadora Sofi':                            'Sophie',
+    'Sophie Guerra':                             'Sophie',
+    'Fran Cuidador':                             'Franklin',
+    'Franklin Mojica':                           'Franklin',
+    'Karol Mediadora':                           'Karol',
+    'Carla Mediadora':                           'Carla',
+    'Alicia Mediadora':                          'Alicia',
+    'Veronica Mediadora':                        'Verónica',
+    'Dulce Mediadora':                           'Dulce Alef',
+    'Alba Mediadora':                            'Alba',
+    'Luna Mediadora':                            'Luna',
+    'Irene Mediadora':                           'Irene',
+    'Paula Monge':                               'Paula',
+    'Vanessa ✨':                                'Vanessa',
+    'Blanca Yunquera':                           'Blanca',
 }
-
 def normalize_mediator(name):
     clean = name.lstrip('\u200e').replace('~', '').strip()
     return NAME_MAP.get(clean, clean)
@@ -130,11 +140,17 @@ def auto_seed():
     try:
         db = psycopg2.connect(DATABASE_URL)
         cur = db.cursor()
+        cur.execute("SELECT COUNT(*) as n FROM reports WHERE date < '2022-01-01'")
+        pre2022 = cur.fetchone()[0]
         cur.execute('SELECT COUNT(*) as n FROM reports')
         n = cur.fetchone()[0]
-        if n > 0:
-            print(f"DB ya tiene {n} registros, skip seed")
+        if n > 0 and pre2022 > 0:
+            print(f"DB tiene {n} registros ({pre2022} pre-2022), skip seed")
             cur.close(); db.close(); return
+        if n > 0 and pre2022 == 0:
+            print(f"DB sin datos pre-2022, recargando seed completo...")
+            cur.execute('DELETE FROM reports')
+            db.commit()
         print("Cargando seed.json...")
         with open(seed_file, encoding='utf-8') as f:
             data = json.load(f)
