@@ -477,6 +477,44 @@ def admin_normalize():
     db.commit()
     return jsonify({'ok': True, 'total_updated': total, 'by_mediator': results})
 
+
+@app.route('/api/admin/reload-seed', methods=['POST'])
+def admin_reload_seed():
+    if request.headers.get('X-Admin-Password') != ADMIN_PASSWORD:
+        return jsonify({'error': 'No autorizado'}), 403
+    seed_file = os.path.join(os.path.dirname(__file__), 'seed.json')
+    if not os.path.exists(seed_file):
+        return jsonify({'error': 'seed.json no encontrado'}), 404
+    try:
+        with open(seed_file, encoding='utf-8') as f:
+            data = json.load(f)
+        db = psycopg2.connect(DATABASE_URL)
+        cur = db.cursor()
+        cur.execute('DELETE FROM reports')
+        inserted = 0
+        for r in data:
+            try:
+                cur.execute("""INSERT INTO reports
+                    (id,date,mediator,turn,mood,conducta,agua,pis,estado,comunicacion,
+                     actividades,comidas,medicacion,notas,vocab,formato,body_preview,banyo)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (id) DO NOTHING""",
+                    (r.get('id'), r.get('date'), r.get('mediator',''),
+                     r.get('turn',''), r.get('mood',''), r.get('conducta',0),
+                     r.get('agua'), r.get('pis'), r.get('estado',''),
+                     r.get('comunicacion',''), r.get('actividades',''),
+                     r.get('comidas',''), r.get('medicacion',''),
+                     r.get('notas',''), json.dumps(r.get('vocab',[]), ensure_ascii=False),
+                     r.get('formato',''), r.get('body_preview','')[:300],
+                     r.get('banyo','')))
+                if cur.rowcount > 0: inserted += 1
+            except: continue
+        db.commit()
+        cur.close(); db.close()
+        return jsonify({'ok': True, 'total': len(data), 'inserted': inserted})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)

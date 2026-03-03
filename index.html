@@ -330,9 +330,9 @@ tbody td{padding:6px 10px;vertical-align:middle}
 
 <main class="main">
   <div class="tabs">
-    <button class="tb active" onclick="showTab('overview')">📊 Resumen</button>
-    <button class="tb" onclick="showTab('list')">📋 Informes</button>
-    <button class="tb" onclick="showTab('log')">📥 Historial subidas</button>
+    <button class="tb active" data-tab="overview" onclick="showTab('overview')">📊 Resumen</button>
+    <button class="tb" data-tab="list" onclick="showTab('list')">📋 Informes</button>
+    <button class="tb" data-tab="log" onclick="showTab('log')">📥 Historial subidas</button>
   </div>
 
   <!-- OVERVIEW -->
@@ -480,7 +480,7 @@ function showTab(t) {
   ['overview','list','log'].forEach(function(id) {
     document.getElementById('tab-'+id).style.display = id===t ? 'block' : 'none';
   });
-  document.querySelectorAll('.tab-btn').forEach(function(btn) {
+  document.querySelectorAll('.tb').forEach(function(btn) {
     btn.classList.toggle('active', btn.dataset.tab === t);
   });
   if(t==='list') renderList();
@@ -547,9 +547,8 @@ function renderMoodChart(monthly) {
   var EVENTS = [
     {date:'2020/03',label:'COVID',color:'#7c3aed'},
     {date:'2021/08',label:'Hosp.',color:'#dc2626'},
-    {date:'2022/11',label:'Equipo',color:'#2563eb'},
-    {date:'2024/01',label:'Min.cond',color:'#16a34a'},
-    {date:'2025/05',label:'Alerta',color:'#E8833A'},
+    {date:'2022/11',label:'Nuevo equipo',color:'#2563eb'},
+    {date:'2025/04',label:'Inicio registro conducta',color:'#E8833A'},
   ];
   var eventPlugin = {
     id:'evLines',
@@ -821,5 +820,39 @@ function deleteAnnotation(id) {
     .then(function(d){STATS=d;updateHeader();renderAnnList();renderOverview();});
 }
 </script>
+
+<!-- MODAL ANOTACIONES -->
+<div class="modal-overlay" id="ann-modal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-hdr">
+      <h3>📌 Anotaciones en el gráfico</h3>
+      <button class="modal-close" onclick="closeAnnotations()">✕</button>
+    </div>
+    <div style="padding:1.2rem">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.8rem">
+        <div class="field"><label style="font-size:.75rem;font-weight:600;color:#374151">Fecha</label>
+          <input type="date" id="ann-date" style="padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit"></div>
+        <div class="field"><label style="font-size:.75rem;font-weight:600;color:#374151">Color</label>
+          <select id="ann-color" style="padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit">
+            <option value="#E8833A">🟠 Cambio</option>
+            <option value="#dc2626">🔴 Crisis</option>
+            <option value="#16a34a">🟢 Mejora</option>
+            <option value="#2563eb">🔵 Info</option>
+            <option value="#7c3aed">🟣 Externo</option>
+          </select></div>
+      </div>
+      <div class="field" style="margin-bottom:.6rem"><label style="font-size:.75rem;font-weight:600;color:#374151">Etiqueta corta</label>
+        <input type="text" id="ann-label" placeholder="ej: Cambio medicación" style="padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit;width:100%"></div>
+      <div class="field" style="margin-bottom:.8rem"><label style="font-size:.75rem;font-weight:600;color:#374151">Descripción (opcional)</label>
+        <input type="text" id="ann-desc" placeholder="Detalle adicional..." style="padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.85rem;font-family:inherit;width:100%"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span id="ann-msg" style="font-size:.8rem"></span>
+        <button onclick="saveAnnotation()" style="padding:8px 18px;border-radius:8px;border:none;background:#2A7F7F;color:#fff;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit">Guardar</button>
+      </div>
+      <div id="ann-list" style="margin-top:1rem;border-top:1px solid #e5e7eb;padding-top:.8rem"></div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
