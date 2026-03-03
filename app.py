@@ -499,16 +499,21 @@ def admin_reload_seed():
         for r in data:
             try:
                 cur.execute("""INSERT INTO reports
-                    (id,date,mediator,turn,mood,conducta,agua,pis,estado,comunicacion,
+                    (date,mediator,turn,mood,conducta,estiramientos,agua,pis,estado,comunicacion,
                      actividades,comidas,medicacion,notas,vocab,formato,body_preview,banyo)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                    (r.get('id'), r.get('date'), r.get('mediator',''),
-                     r.get('turn',''), r.get('mood',''), r.get('conducta',0),
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (date,mediator,turn) DO UPDATE SET
+                    mood=EXCLUDED.mood, conducta=EXCLUDED.conducta,
+                    agua=EXCLUDED.agua, notas=EXCLUDED.notas,
+                    body_preview=EXCLUDED.body_preview""",
+                    (r.get('date'), r.get('mediator',''),
+                     r.get('turn','sin especificar'), r.get('mood','?'),
+                     r.get('conducta',0), r.get('estiramientos',0),
                      r.get('agua'), r.get('pis'), r.get('estado',''),
                      r.get('comunicacion',''), r.get('actividades',''),
                      r.get('comidas',''), r.get('medicacion',''),
                      r.get('notas',''), json.dumps(r.get('vocab',[]), ensure_ascii=False),
-                     r.get('formato',''), r.get('body_preview','')[:300],
+                     r.get('formato','v1'), r.get('body_preview','')[:300],
                      r.get('banyo','')))
                 if cur.rowcount > 0: inserted += 1
             except: continue
