@@ -219,9 +219,6 @@ tbody td{padding:6px 10px;vertical-align:middle}
     <div class="login-logo">🤝</div>
     <div class="login-title">Jorge · Fundación HÁPTICA</div>
     <div class="login-sub">Dashboard de seguimiento diario</div>
-    <div class="login-api-label">URL de la API (Railway)</div>
-    <input class="login-input" id="api-url" type="url"
-      placeholder="Dejar vacío si usas esta misma URL" autocomplete="off">
     <input class="login-input" id="api-pwd" type="password"
       placeholder="Contraseña de acceso" autocomplete="current-password">
     <button class="login-btn" onclick="doLogin()">Entrar</button>
@@ -383,11 +380,9 @@ const MS = {muy_positivo:4,positivo:3,neutro:2,negativo:1,'?':2.5};
 
 // ── LOGIN ──────────────────────────────────────────────────────────────────────
 function doLogin() {
-  // Si no ponen URL, usa la misma URL donde está alojado el dashboard
-  const inputUrl = document.getElementById('api-url').value.trim().replace(/\/$/, '');
   const pwd = document.getElementById('api-pwd').value;
   if (!pwd) { showLoginErr('Introduce la contraseña'); return; }
-  API_URL = inputUrl || (window.location.origin);
+  API_URL = window.location.origin;
   API_PWD = pwd;
   document.getElementById('login-err').style.display = 'none';
   document.getElementById('login-screen').querySelector('.login-btn').textContent = 'Verificando...';
@@ -417,7 +412,7 @@ function showLoginErr(msg) {
 }
 
 function logout() {
-  localStorage.removeItem('haptica_url'); localStorage.removeItem('haptica_pwd');
+  localStorage.removeItem('haptica_pwd');
   API_URL = ''; API_PWD = '';
   document.getElementById('app').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
@@ -685,12 +680,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
   dz.addEventListener('drop', e=>{e.preventDefault();dz.classList.remove('drag-over');if(e.dataTransfer.files[0])handleUpload(e.dataTransfer.files[0]);});
 
   // Auto-login si hay credenciales guardadas
-  const savedUrl = localStorage.getItem('haptica_url');
   const savedPwd = localStorage.getItem('haptica_pwd');
   if (savedPwd) {
-    document.getElementById('api-url').value = savedUrl || '';
     document.getElementById('api-pwd').value = savedPwd;
-    API_URL = savedUrl || window.location.origin; API_PWD = savedPwd;
+    API_URL = window.location.origin; API_PWD = savedPwd;
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     loadAll();
