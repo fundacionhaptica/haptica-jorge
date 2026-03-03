@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jorge · Fundación HÁPTICA</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/2.2.1/chartjs-plugin-annotation.min.js"></script>
 <style>
 :root{
   --teal:#2A7F7F;--teal2:#1f6060;--teal-pale:#e8f4f4;--teal-light:rgba(42,127,127,.12);
@@ -825,6 +825,65 @@ function openDetail(idx) {
     ${r.notas?`<div class="ps"><div class="ps-title">📝 Notas</div><div class="dtext">${r.notas}</div></div>`:''}`;
   document.getElementById('overlay').classList.add('open');
 }
+
+// ── ANOTACIONES ───────────────────────────────────────────────────────────────
+function openAnnotations() {
+  document.getElementById('ann-modal').classList.add('open');
+  renderAnnList();
+}
+function closeAnnotations() {
+  document.getElementById('ann-modal').classList.remove('open');
+}
+
+function renderAnnList() {
+  const el = document.getElementById('ann-list');
+  if (!el) return;
+  const anns = STATS.annotations || [];
+  if (!anns.length) {
+    el.innerHTML = '<p style="font-size:.82rem;color:#9ca3af;text-align:center;padding:.5rem">No hay anotaciones personalizadas todavía.</p>';
+    return;
+  }
+  el.innerHTML = anns.map(a => `
+    <div style="display:flex;align-items:center;gap:.5rem;padding:.5rem .6rem;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:.3rem">
+      <span style="width:10px;height:10px;border-radius:50%;background:${a.color};flex-shrink:0"></span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.82rem;font-weight:600;color:#1a2332">${a.date.slice(0,7)} · ${a.label}</div>
+        ${a.description ? `<div style="font-size:.75rem;color:#6b7280">${a.description}</div>` : ''}
+      </div>
+      <button onclick="deleteAnnotation(${a.id})" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:3px 8px;font-size:.75rem;cursor:pointer">✕</button>
+    </div>`).join('');
+}
+
+async function saveAnnotation() {
+  const date  = document.getElementById('ann-date').value;
+  const label = document.getElementById('ann-label').value.trim();
+  const desc  = document.getElementById('ann-desc').value.trim();
+  const color = document.getElementById('ann-color').value;
+  const msg   = document.getElementById('ann-msg');
+  if (!date || !label) { msg.style.color='#dc2626'; msg.textContent='Fecha y etiqueta son obligatorias.'; return; }
+  msg.style.color='#6b7280'; msg.textContent='Guardando...';
+  try {
+    const r = await apiFetch('/api/annotations', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({date, label, description:desc, color, type:'event'})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      msg.style.color='#16a34a'; msg.textContent='✅ Guardada';
+      document.getElementById('ann-label').value='';
+      document.getElementById('ann-desc').value='';
+      await loadStats(); renderAnnList(); renderOverview();
+      setTimeout(()=>msg.textContent='', 2000);
+    }
+  } catch(e) { msg.style.color='#dc2626'; msg.textContent='Error: '+e.message; }
+}
+
+async function deleteAnnotation(id) {
+  if (!confirm('¿Eliminar esta anotación?')) return;
+  await apiFetch(`/api/annotations/${id}`, {method:'DELETE'});
+  await loadStats(); renderAnnList(); renderOverview();
+}
+
 </script>
 </body>
 </html>
