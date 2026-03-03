@@ -494,14 +494,14 @@ def admin_reload_seed():
         db = psycopg2.connect(DATABASE_URL)
         cur = db.cursor()
         cur.execute('DELETE FROM reports')
+        db.commit()
         inserted = 0
         for r in data:
             try:
                 cur.execute("""INSERT INTO reports
                     (id,date,mediator,turn,mood,conducta,agua,pis,estado,comunicacion,
                      actividades,comidas,medicacion,notas,vocab,formato,body_preview,banyo)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (id) DO NOTHING""",
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                     (r.get('id'), r.get('date'), r.get('mediator',''),
                      r.get('turn',''), r.get('mood',''), r.get('conducta',0),
                      r.get('agua'), r.get('pis'), r.get('estado',''),
