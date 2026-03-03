@@ -30,6 +30,9 @@ API_PASSWORD = os.environ.get('API_PASSWORD', 'haptica2025')
 
 # 2. RUTAS DE FRONTEND
 @app.route('/')
+def health():
+    return jsonify({'status': 'ok', 'service': 'HÁPTICA Jorge API', 'version': '1.0'})
+
 @app.route('/dashboard')
 @app.route('/dashboard/')
 def frontend():
