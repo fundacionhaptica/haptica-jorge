@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jorge · Fundación HÁPTICA</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script>
 <style>
 :root{
   --teal:#2A7F7F;--teal2:#1f6060;--teal-pale:#e8f4f4;--teal-light:rgba(42,127,127,.12);
@@ -524,7 +525,7 @@ function renderOverview() {
       <div class="kpi"><div class="kpi-ico">📈</div><div class="kpi-val">${s.avg_mood||'—'}</div><div class="kpi-label">Ánimo medio (1–4)</div></div>
     </div>
     <div class="charts-grid">
-      <div class="cc"><div class="cc-title">😊 Estado de ánimo mensual</div><div class="cw tall"><canvas id="ch-mood"></canvas></div></div>
+      <div class="cc"><div class="cc-title">😊 Estado de ánimo mensual</div><div class="cw" style="height:200px"><canvas id="ch-mood"></canvas></div><div id="mediator-timeline" style="padding:.5rem .8rem;border-top:1px solid #e5e7eb;font-size:.78rem"></div></div>
       <div class="cc"><div class="cc-title">👥 Informes por mediador/a</div><div class="cw tall"><canvas id="ch-med"></canvas></div></div>
       <div class="cc"><div class="cc-title">💧 Hidratación media mensual</div><div class="cw"><canvas id="ch-agua"></canvas></div></div>
       <div class="cc"><div class="cc-title">⚡ % Picos de conducta por mes</div><div class="cw"><canvas id="ch-cond"></canvas></div></div>
@@ -542,14 +543,63 @@ function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
 
 function renderMoodChart(monthly){
   dc('mood');
-  const labels = monthly.slice(-30).map(m=>m.month.replace('-','/'));
-  const data   = monthly.slice(-30).map(m=>m.avg_mood);
+  const sorted = [...monthly].sort((a,b)=>a.month.localeCompare(b.month));
+  const labels = sorted.map(m=>m.month.replace('-','/'));
+  const data   = sorted.map(m=>m.avg_mood||null);
+  const annotations = STATS.annotations || [];
+
+  const AUTO_ANN = [
+    {date:'2020/03',label:'🦠 COVID',color:'#7c3aed',desc:'Confinamiento. Cierre del centro. Inicio período crítico.'},
+    {date:'2021/08',label:'🏥 Hosp.',color:'#dc2626',desc:'Hospitalización. Contenciones mecánicas documentadas.'},
+    {date:'2022/11',label:'📋 Nuevo equipo',color:'#2563eb',desc:'Incorporación Raúl Blasco. Formato estructurado.'},
+    {date:'2024/01',label:'✅ Mín. conducta',color:'#16a34a',desc:'2024: mínimo histórico de picos de conducta (12%).'},
+    {date:'2025/05',label:'⚠️ Alerta',color:'#E8833A',desc:'Picos conducta >90% desde julio 2025.'},
+  ];
+  const allAnn = [
+    ...AUTO_ANN,
+    ...annotations.map(a=>({date:a.date.slice(0,7).replace('-','/'),label:a.label,color:a.color||'#E8833A',desc:a.description||''}))
+  ];
+
+  const annObj = {};
+  allAnn.forEach((ann,i)=>{
+    const idx = labels.findIndex(l=>l===ann.date||l.startsWith(ann.date));
+    if(idx>=0) annObj['a'+i]={
+      type:'line',xMin:idx,xMax:idx,
+      borderColor:ann.color,borderWidth:2,borderDash:[5,3],
+      label:{content:ann.label,display:true,position:'start',
+             backgroundColor:ann.color+'ee',color:'#fff',
+             font:{size:8.5,weight:'bold'},padding:{x:4,y:2},yAdjust:-8}
+    };
+  });
+
   charts['mood'] = new Chart(document.getElementById('ch-mood').getContext('2d'),{
     type:'line',
-    data:{labels,datasets:[{data,borderColor:'#2A7F7F',backgroundColor:'rgba(42,127,127,.1)',tension:.4,fill:true,pointRadius:2}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    data:{labels,datasets:[{data,borderColor:'#2A7F7F',backgroundColor:'rgba(42,127,127,.1)',tension:.4,fill:true,pointRadius:2,spanGaps:true}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},annotation:{annotations:annObj}},
       scales:{y:{min:1,max:4,ticks:{callback:v=>[,'😔','😐','😊','😄'][Math.round(v)]||v}},x:{ticks:{font:{size:8},maxRotation:45}}}}
   });
+  renderMediatorTimeline();
+}
+
+function renderMediatorTimeline(){
+  const el = document.getElementById('mediator-timeline');
+  if(!el) return;
+  const byMed = (STATS.by_mediator||[]).filter(m=>m.first_date);
+  const sorted = [...byMed].sort((a,b)=>a.first_date.localeCompare(b.first_date));
+  const PAL = ['#2A7F7F','#E8833A','#7c3aed','#16a34a','#2563eb','#dc2626','#d97706','#0891b2','#be185d','#65a30d','#9333ea','#0d9488'];
+  el.innerHTML = `
+    <div style="font-size:.72rem;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem">Historial de mediadores</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.3rem">
+      ${sorted.map((m,i)=>`
+        <div title="${m.first_date.slice(0,7)} → ${m.last_date.slice(0,7)} · ${m.total} informes · Picos: ${m.pct_picos||0}%"
+          style="display:flex;align-items:center;gap:.3rem;background:#f8fafc;border:1px solid var(--border);border-radius:20px;padding:3px 9px;font-size:.73rem">
+          <span style="width:8px;height:8px;border-radius:50%;background:${PAL[i%PAL.length]};flex-shrink:0"></span>
+          <b style="color:var(--dark)">${m.mediator}</b>
+          <span style="color:var(--gray)">${m.first_date.slice(0,7)} – ${m.last_date.slice(0,7)}</span>
+          <span style="color:var(--teal);font-weight:700">${m.total}</span>
+        </div>`).join('')}
+    </div>`;
 }
 function renderMedChart(){
   dc('med');
