@@ -16,9 +16,10 @@ from parser import parse_whatsapp
 load_dotenv()
 app = Flask(__name__)
 CORS(app)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
-DATABASE_URL  = os.environ.get('DATABASE_URL', '')
-API_PASSWORD  = os.environ.get('API_PASSWORD', 'haptica2025')
+DATABASE_URL   = os.environ.get('DATABASE_URL', '')
+API_PASSWORD   = os.environ.get('API_PASSWORD', 'haptica2025')
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'hapticaadmin2025')
 
 def get_db():
@@ -62,8 +63,53 @@ def init_db():
         """)
         db.commit(); cur.close(); db.close()
         print("DB lista")
+        # Seed automático si está vacía
+        auto_seed()
     except Exception as e:
         print(f"init_db error: {e}")
+
+def auto_seed():
+    """Carga el histórico desde seed.json si la DB está vacía."""
+    seed_file = os.path.join(os.path.dirname(__file__), 'seed.json')
+    if not os.path.exists(seed_file):
+        print("No hay seed.json, saltando seed automático")
+        return
+    try:
+        db = psycopg2.connect(DATABASE_URL)
+        cur = db.cursor()
+        cur.execute('SELECT COUNT(*) as n FROM reports')
+        n = cur.fetchone()[0]
+        if n > 0:
+            print(f"DB ya tiene {n} registros, skip seed")
+            cur.close(); db.close()
+            return
+        print("DB vacía, cargando histórico desde seed.json...")
+        with open(seed_file, encoding='utf-8') as f:
+            data = json.load(f)
+        inserted = 0
+        for r in data:
+            try:
+                cur.execute("""INSERT INTO reports
+                    (date,mediator,turn,mood,conducta,estiramientos,agua,pis,
+                     banyo,estado,comunicacion,actividades,comidas,medicacion,
+                     notas,vocab,formato,body_preview)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (date,mediator,turn) DO NOTHING""",
+                    (r.get('date'),r.get('mediator'),r.get('turn','sin especificar'),
+                     r.get('mood','?'),r.get('conducta',0),r.get('estiramientos',0),
+                     r.get('agua'),r.get('pis'),r.get('banyo',''),r.get('estado',''),
+                     r.get('comunicacion',''),r.get('actividades',''),r.get('comidas',''),
+                     r.get('medicacion',''),r.get('notas',''),
+                     json.dumps(r.get('vocab',[]),ensure_ascii=False),
+                     r.get('formato','v1'),r.get('body_preview','')[:300]))
+                if cur.rowcount > 0: inserted += 1
+            except:
+                db.rollback()
+        db.commit()
+        print(f"Seed completado: {inserted} registros")
+        cur.close(); db.close()
+    except Exception as e:
+        print(f"auto_seed error: {e}")
 
 with app.app_context():
     init_db()
@@ -132,7 +178,8 @@ def upload():
                     (len(reports),inserted,duplicates,dates[0],dates[-1]))
     except: pass
     db.commit()
-    return jsonify({'ok':True,'total_in_file':len(reports),'new_inserted':inserted,'duplicates':duplicates,'date_from':dates[0],'date_to':dates[-1]})
+    return jsonify({'ok':True,'total_in_file':len(reports),'new_inserted':inserted,
+                    'duplicates':duplicates,'date_from':dates[0],'date_to':dates[-1]})
 
 @app.route('/api/reports')
 @require_auth
@@ -143,7 +190,11 @@ def get_reports():
         if request.args.get(k): where.append(f'{col} %s'); params.append(request.args[k])
     if request.args.get('conducta') == '1': where.append('conducta > 0')
     if request.args.get('conducta') == '0': where.append('conducta = 0')
-    cur.execute(f"SELECT id,date,mediator,turn,mood,conducta,estiramientos,agua,pis,estado,comunicacion,actividades,comidas,medicacion,notas,vocab,formato,body_preview FROM reports WHERE {' AND '.join(where)} ORDER BY date DESC,id DESC", params)
+    cur.execute(f"""SELECT id,date,mediator,turn,mood,conducta,estiramientos,
+               agua,pis,estado,comunicacion,actividades,comidas,
+               medicacion,notas,vocab,formato,body_preview
+        FROM reports WHERE {' AND '.join(where)}
+        ORDER BY date DESC,id DESC""", params)
     result = []
     for r in cur.fetchall():
         d = dict(r)
@@ -197,7 +248,8 @@ def get_stats():
         for k in ['uploaded_at','date_from','date_to']:
             if d.get(k): d[k] = d[k].isoformat()
         uploads.append(d)
-    return jsonify({'summary':s,'monthly':monthly,'by_mediator':by_med,'mood_dist':mood_dist,'upload_log':uploads})
+    return jsonify({'summary':s,'monthly':monthly,'by_mediator':by_med,
+                    'mood_dist':mood_dist,'upload_log':uploads})
 
 @app.route('/api/mediators')
 @require_auth
@@ -218,33 +270,6 @@ def get_upload_log():
             if d.get(k): d[k] = d[k].isoformat()
         rows.append(d)
     return jsonify({'logs': rows})
-
-@app.route('/api/seed', methods=['POST'])
-def seed():
-    if request.headers.get('X-Admin-Password') != ADMIN_PASSWORD:
-        return jsonify({'error': 'No autorizado'}), 403
-    data = json.loads(request.files['file'].read().decode('utf-8'))
-    db = get_db(); cur = db.cursor()
-    inserted = 0
-    for r in data:
-        try:
-            cur.execute("""INSERT INTO reports
-                (date,mediator,turn,mood,conducta,estiramientos,agua,pis,
-                 banyo,estado,comunicacion,actividades,comidas,medicacion,
-                 notas,vocab,formato,body_preview)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (date,mediator,turn) DO NOTHING""",
-                (r.get('date'),r.get('mediator'),r.get('turn','sin especificar'),
-                 r.get('mood','?'),r.get('conducta',0),r.get('estiramientos',0),
-                 r.get('agua'),r.get('pis'),r.get('banyo',''),r.get('estado',''),
-                 r.get('comunicacion',''),r.get('actividades',''),r.get('comidas',''),
-                 r.get('medicacion',''),r.get('notas',''),
-                 json.dumps(r.get('vocab',[]),ensure_ascii=False),
-                 r.get('formato','v1'),r.get('body_preview','')[:300]))
-            if cur.rowcount > 0: inserted += 1
-        except: continue
-    db.commit()
-    return jsonify({'ok':True,'inserted':inserted,'total':len(data)})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
