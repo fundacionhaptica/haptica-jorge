@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jorge · Fundación HÁPTICA</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/2.2.1/chartjs-plugin-annotation.min.js"></script>
 <style>
+
 :root{
   --teal:#2A7F7F;--teal2:#1f6060;--teal-pale:#e8f4f4;--teal-light:rgba(42,127,127,.12);
   --orange:#E8833A;--orange-pale:#fef0e6;--dark:#1a2332;--gray:#6b7280;--gray-light:#f4f6f9;
@@ -210,6 +210,7 @@ tbody td{padding:6px 10px;vertical-align:middle}
 @media(max-width:900px){.sidebar{display:none}.charts-grid{grid-column:1/-1;grid-template-columns:1fr}}
 @media(max-width:600px){.main{padding:.8rem}.kpi-grid{grid-template-columns:1fr 1fr}}
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
 </style>
 </head>
 <body>
@@ -370,48 +371,65 @@ tbody td{padding:6px 10px;vertical-align:middle}
 
 <script>
 // ── CONFIG / STATE ─────────────────────────────────────────────────────────────
-let API_URL = '', API_PWD = '';
-let STATS = null, REPORTS = [], MEDIATORS = [];
-let F = {turn:'',mediator:'',mood:'',conducta:'',from:'',to:''};
-let charts = {};
-let currentListYear = 'all';
+var API_URL = '', API_PWD = '';
+var STATS = null, REPORTS = [], MEDIATORS = [];
+var F = {turn:'',mediator:'',mood:'',conducta:'',from:'',to:''};
+var charts = {};
+var currentListYear = 'all';
 
-const MOOD_LABEL = {muy_positivo:'😄 Muy positivo',positivo:'😊 Positivo',neutro:'😐 Neutro',negativo:'😔 Negativo','?':'⬜ Sin datos'};
-const MOOD_CLASS = {muy_positivo:'b-mp',positivo:'b-p',neutro:'b-n',negativo:'b-ne','?':'b-q'};
-const TURN_LABEL = {mañana:'Mañana',tarde:'Tarde',noche:'Noche','sin especificar':'—'};
-const MS = {muy_positivo:4,positivo:3,neutro:2,negativo:1,'?':2.5};
+var MOOD_LABEL = {muy_positivo:'😄 Muy positivo',positivo:'😊 Positivo',neutro:'😐 Neutro',negativo:'😔 Negativo','?':'⬜ Sin datos'};
+var MOOD_CLASS = {muy_positivo:'b-mp',positivo:'b-p',neutro:'b-n',negativo:'b-ne','?':'b-q'};
+var TURN_LABEL = {mañana:'Mañana',tarde:'Tarde',noche:'Noche','sin especificar':'—'};
 
 // ── LOGIN ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  var input = document.getElementById('api-pwd');
+  if (input) input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  var saved = localStorage.getItem('haptica_pwd');
+  if (saved) {
+    API_URL = window.location.origin;
+    API_PWD = saved;
+    showApp();
+    loadAll();
+  }
+});
+
 function doLogin() {
-  const pwd = document.getElementById('api-pwd').value;
+  var pwd = document.getElementById('api-pwd').value;
   if (!pwd) { showLoginErr('Introduce la contraseña'); return; }
   API_URL = window.location.origin;
   API_PWD = pwd;
   document.getElementById('login-err').style.display = 'none';
-  document.getElementById('login-screen').querySelector('.login-btn').textContent = 'Verificando...';
-  fetch(`${API_URL}/api/ping`, { headers: { 'X-Password': API_PWD } })
-    .then(r => {
+  document.querySelector('.login-btn').textContent = 'Verificando...';
+  fetch(API_URL + '/api/ping', { headers: { 'X-Password': API_PWD } })
+    .then(function(r) {
       if (r.status === 401) throw new Error('auth');
       if (!r.ok) throw new Error('server');
       return r.json();
     })
-    .then(d => {
-      localStorage.setItem('haptica_url', API_URL);
+    .then(function(d) {
       localStorage.setItem('haptica_pwd', API_PWD);
-      document.getElementById('login-screen').classList.add('hidden');
-      document.getElementById('app').classList.remove('hidden');
+      showApp();
       loadAll();
     })
-    .catch(e => {
-      showLoginErr(e.message === 'auth' ? 'Contraseña incorrecta' : 'No se pudo conectar con la API');
-      document.getElementById('login-screen').querySelector('.login-btn').textContent = 'Entrar';
+    .catch(function(e) {
+      showLoginErr(e.message === 'auth' ? 'Contraseña incorrecta' : 'Error de conexión');
+      document.querySelector('.login-btn').textContent = 'Entrar';
     });
 }
 
+function showApp() {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+}
+
 function showLoginErr(msg) {
-  const el = document.getElementById('login-err');
+  var el = document.getElementById('login-err');
   el.textContent = msg; el.style.display = 'block';
-  document.getElementById('login-screen').querySelector('.login-btn').textContent = 'Entrar';
+  document.querySelector('.login-btn').textContent = 'Entrar';
 }
 
 function logout() {
@@ -419,314 +437,307 @@ function logout() {
   API_URL = ''; API_PWD = '';
   document.getElementById('app').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('api-pwd').value = '';
 }
 
-// ── API HELPERS ────────────────────────────────────────────────────────────────
-function apiFetch(path, opts={}) {
-  return fetch(`${API_URL}${path}`, {
-    ...opts,
-    headers: { 'X-Password': API_PWD, ...(opts.headers||{}) }
-  });
+function apiFetch(path, opts) {
+  opts = opts || {};
+  opts.headers = opts.headers || {};
+  opts.headers['X-Password'] = API_PWD;
+  return fetch(API_URL + path, opts);
 }
 
-function buildQuery(extra={}) {
-  const p = new URLSearchParams();
-  const all = {...F, ...extra};
-  for (const [k,v] of Object.entries(all)) if (v) p.set(k, v);
-  return p.toString() ? '?' + p.toString() : '';
-}
-
-// ── LOAD ───────────────────────────────────────────────────────────────────────
-async async function loadAll() {
-  try {
-    await Promise.allSettled([loadStats(), loadMediators(), loadReports()]);
-  } catch(e) { console.warn('loadAll error:', e); }
+// ── CARGA DE DATOS ────────────────────────────────────────────────────────────
+async function loadAll() {
+  try { await Promise.allSettled([loadStats(), loadMediators(), loadReports()]); }
+  catch(e) { console.warn('loadAll:', e); }
   renderOverview();
 }
 
 async function loadStats() {
   try {
-    const r = await apiFetch('/api/stats');
-    if (!r.ok) throw new Error('stats '+r.status);
+    var r = await apiFetch('/api/stats');
     STATS = await r.json();
     updateHeader();
-  } catch(e) { console.warn('loadStats:', e); STATS = {summary:{},monthly:[],by_mediator:[],annotations:[]}; }
+  } catch(e) {
+    console.warn('loadStats:', e);
+    STATS = {summary:{},monthly:[],by_mediator:[],annotations:[]};
+  }
 }
 
 async function loadMediators() {
   try {
-    const r = await apiFetch('/api/mediators');
-    const d = await r.json();
+    var r = await apiFetch('/api/mediators');
+    var d = await r.json();
     MEDIATORS = d.mediators || [];
-    const sel = document.getElementById('med-sel');
-    sel.innerHTML = '<option value="">Todos</option>' + MEDIATORS.map(m=>`<option value="${m}">${m}</option>`).join('');
+    var sel = document.getElementById('med-sel');
+    sel.innerHTML = '<option value="">Todos</option>' + MEDIATORS.map(function(m) {
+      return '<option value="' + m + '">' + m + '</option>';
+    }).join('');
   } catch(e) { console.warn('loadMediators:', e); }
 }
 
 async function loadReports() {
   try {
-    const r = await apiFetch('/api/reports' + buildQuery());
-    const d = await r.json();
+    var r = await apiFetch('/api/reports' + buildQuery());
+    var d = await r.json();
     REPORTS = d.reports || [];
   } catch(e) { console.warn('loadReports:', e); REPORTS = []; }
 }
 
-function updateHeader() {
-  if (!STATS?.summary) return;
-  const s = STATS.summary;
-  document.getElementById('hdr-total').textContent = s.total?.toLocaleString() || '—';
-  const years = new Set((STATS.monthly||[]).map(m=>m.month.slice(0,4)));
-  document.getElementById('hdr-years').textContent = years.size || '—';
-  document.getElementById('hdr-med').textContent = (STATS.by_mediator||[]).length || '—';
-  document.getElementById('hdr-sub').textContent = `Fundación HÁPTICA · ${s.date_from||''} → ${s.date_to||''}`;
+function buildQuery(extra) {
+  extra = extra || {};
+  var p = Object.assign({}, F, extra);
+  var q = Object.entries(p).filter(function(kv) { return kv[1]; }).map(function(kv) { return kv[0]+'='+encodeURIComponent(kv[1]); }).join('&');
+  return q ? '?' + q : '';
 }
 
-// ── FILTERS ───────────────────────────────────────────────────────────────────
+function updateHeader() {
+  if (!STATS || !STATS.summary) return;
+  var s = STATS.summary;
+  var el = function(id) { return document.getElementById(id); };
+  if(el('hdr-total')) el('hdr-total').textContent = (s.total||0).toLocaleString();
+  if(el('hdr-mood')) el('hdr-mood').textContent = s.avg_mood ? parseFloat(s.avg_mood).toFixed(1) : '—';
+  if(el('hdr-med')) el('hdr-med').textContent = s.n_mediators || '—';
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function showTab(t) {
+  ['overview','list','log'].forEach(function(id) {
+    document.getElementById('tab-'+id).style.display = id===t ? 'block' : 'none';
+  });
+  document.querySelectorAll('.tab-btn').forEach(function(btn) {
+    btn.classList.toggle('active', btn.dataset.tab === t);
+  });
+  if(t==='list') renderList();
+  if(t==='log') renderLog();
+}
+
+// ── FILTROS ───────────────────────────────────────────────────────────────────
 function sf(key, val, btn) {
   F[key] = val;
-  if (btn) {
-    const g = btn.closest('.fg');
-    if (g) g.querySelectorAll('.fb').forEach(b=>b.classList.remove('active'));
+  if(btn) {
+    btn.closest('.sb-group').querySelectorAll('.sb-btn').forEach(function(b) { b.classList.remove('active'); });
     btn.classList.add('active');
   }
-  applyFilters();
 }
 
 async function applyFilters() {
-  F.from = document.getElementById('df').value;
-  F.to   = document.getElementById('dt').value;
   await loadReports();
-  const tab = document.querySelector('.tb.active')?.textContent?.trim();
-  if (tab?.includes('Informes')) renderList();
-  else renderOverview();
+  renderOverview();
 }
 
 function clearFilters() {
   F = {turn:'',mediator:'',mood:'',conducta:'',from:'',to:''};
-  document.getElementById('med-sel').value = '';
-  document.getElementById('df').value = '';
-  document.getElementById('dt').value = '';
-  document.querySelectorAll('.fg').forEach(g=>g.querySelectorAll('.fb').forEach((b,i)=>b.classList.toggle('active',i===0)));
-  applyFilters();
-}
-
-// ── TABS ───────────────────────────────────────────────────────────────────────
-function showTab(t) {
-  ['overview','list','log'].forEach(id => {
-    document.getElementById('tab-'+id).classList.toggle('hidden', id!==t);
+  document.querySelectorAll('.sb-btn').forEach(function(b,i) {
+    b.classList.toggle('active', i===0||i===5||i===10);
   });
-  document.querySelectorAll('.tb').forEach((b,i)=>b.classList.toggle('active',['overview','list','log'][i]===t));
-  if (t==='overview') renderOverview();
-  if (t==='list') renderList();
-  if (t==='log') renderLog();
+  document.getElementById('med-sel').value='';
+  document.getElementById('from-inp').value='';
+  document.getElementById('to-inp').value='';
+  loadReports().then(function() { renderOverview(); });
 }
 
-// ── RENDER OVERVIEW ────────────────────────────────────────────────────────────
+// ── OVERVIEW ─────────────────────────────────────────────────────────────────
 function renderOverview() {
-  if (!STATS) return;
-  const s = STATS.summary;
-  const monthly = [...(STATS.monthly||[])].sort((a,b)=>a.month<b.month?-1:1);
-  const html = `
+  if(!STATS) return;
+  var s = STATS.summary || {};
+  var monthly = (STATS.monthly||[]).slice().sort(function(a,b){return a.month.localeCompare(b.month);});
+  var el = document.getElementById('overview-content');
+  var pct_pos = s.pct_positivo || 0;
+  var pct_ok = s.pct_sin_picos || 0;
+  el.innerHTML = `
     <div class="kpi-grid">
-      <div class="kpi"><div class="kpi-ico">📝</div><div class="kpi-val">${s.total?.toLocaleString()||'—'}</div><div class="kpi-label">Informes totales</div><div class="kpi-sub">${s.date_from||''} → ${s.date_to||''}</div></div>
-      <div class="kpi"><div class="kpi-ico">💧</div><div class="kpi-val">${s.avg_agua||'—'}</div><div class="kpi-label">ml agua/día</div></div>
-      <div class="kpi"><div class="kpi-ico">⚡</div><div class="kpi-val">${s.pct_sin_picos||'—'}%</div><div class="kpi-label">% sin picos</div></div>
-      <div class="kpi"><div class="kpi-ico">😊</div><div class="kpi-val">${s.pct_positivo||'—'}%</div><div class="kpi-label">% estado positivo</div></div>
-      <div class="kpi"><div class="kpi-ico">👥</div><div class="kpi-val">${s.n_mediators||'—'}</div><div class="kpi-label">Mediadores</div></div>
-      <div class="kpi"><div class="kpi-ico">📈</div><div class="kpi-val">${s.avg_mood||'—'}</div><div class="kpi-label">Ánimo medio (1–4)</div></div>
+      <div class="kpi"><div class="kpi-val">${(s.total||0).toLocaleString()}</div><div class="kpi-label">Informes totales</div></div>
+      <div class="kpi"><div class="kpi-val">${s.avg_mood||'—'}</div><div class="kpi-label">Ánimo medio (1-4)</div></div>
+      <div class="kpi"><div class="kpi-val">${pct_pos}%</div><div class="kpi-label">Días positivos</div></div>
+      <div class="kpi"><div class="kpi-val">${pct_ok}%</div><div class="kpi-label">Días sin picos</div></div>
     </div>
     <div class="charts-grid">
-      <div class="cc"><div class="cc-title">😊 Estado de ánimo mensual</div><div class="cw" style="height:200px"><canvas id="ch-mood"></canvas></div><div id="mediator-timeline" style="padding:.5rem .8rem;border-top:1px solid #e5e7eb;font-size:.78rem"></div></div>
+      <div class="cc" style="grid-column:1/-1"><div class="cc-title">😊 Estado de ánimo mensual</div><div class="cw" style="height:180px"><canvas id="ch-mood"></canvas></div><div id="mediator-timeline" style="padding:.5rem .8rem;border-top:1px solid #e5e7eb;font-size:.78rem"></div></div>
       <div class="cc"><div class="cc-title">👥 Informes por mediador/a</div><div class="cw tall"><canvas id="ch-med"></canvas></div></div>
-      <div class="cc"><div class="cc-title">💧 Hidratación media mensual</div><div class="cw"><canvas id="ch-agua"></canvas></div></div>
-      <div class="cc"><div class="cc-title">⚡ % Picos de conducta por mes</div><div class="cw"><canvas id="ch-cond"></canvas></div></div>
+      <div class="cc"><div class="cc-title">💧 Hidratación media (ml)</div><div class="cw tall"><canvas id="ch-agua"></canvas></div></div>
+      <div class="cc"><div class="cc-title">⚡ Picos de conducta (%)</div><div class="cw tall"><canvas id="ch-cond"></canvas></div></div>
     </div>`;
-  document.getElementById('overview-content').innerHTML = html;
-  requestAnimationFrame(()=>{
-    renderMoodChart(monthly);
-    renderMedChart();
-    renderAguaChart(monthly);
-    renderCondChart(monthly);
-  });
+  renderMoodChart(monthly);
+  renderMedChart();
+  renderAguaChart(monthly);
+  renderCondChart(monthly);
 }
 
-function dc(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
+function dc(id) { if(charts[id]) { charts[id].destroy(); delete charts[id]; } }
 
-function renderMoodChart(monthly){
+function renderMoodChart(monthly) {
   dc('mood');
-  const sorted = [...monthly].sort((a,b)=>a.month.localeCompare(b.month));
-  const labels = sorted.map(m=>m.month.replace('-','/'));
-  const data   = sorted.map(m=>m.avg_mood||null);
-  const annotations = STATS.annotations || [];
-
-  const AUTO_ANN = [
-    {date:'2020/03',label:'🦠 COVID',color:'#7c3aed',desc:'Confinamiento. Cierre del centro. Inicio período crítico.'},
-    {date:'2021/08',label:'🏥 Hosp.',color:'#dc2626',desc:'Hospitalización. Contenciones mecánicas documentadas.'},
-    {date:'2022/11',label:'📋 Nuevo equipo',color:'#2563eb',desc:'Incorporación Raúl Blasco. Formato estructurado.'},
-    {date:'2024/01',label:'✅ Mín. conducta',color:'#16a34a',desc:'2024: mínimo histórico de picos de conducta (12%).'},
-    {date:'2025/05',label:'⚠️ Alerta',color:'#E8833A',desc:'Picos conducta >90% desde julio 2025.'},
+  var labels = monthly.map(function(m) { return m.month.replace('-','/'); });
+  var data = monthly.map(function(m) { return m.avg_mood || null; });
+  var EVENTS = [
+    {date:'2020/03',label:'COVID',color:'#7c3aed'},
+    {date:'2021/08',label:'Hosp.',color:'#dc2626'},
+    {date:'2022/11',label:'Equipo',color:'#2563eb'},
+    {date:'2024/01',label:'Min.cond',color:'#16a34a'},
+    {date:'2025/05',label:'Alerta',color:'#E8833A'},
   ];
-  const allAnn = [
-    ...AUTO_ANN,
-    ...annotations.map(a=>({date:a.date.slice(0,7).replace('-','/'),label:a.label,color:a.color||'#E8833A',desc:a.description||''}))
-  ];
-
-  const annObj = {};
-  allAnn.forEach((ann,i)=>{
-    const idx = labels.findIndex(l=>l===ann.date||l.startsWith(ann.date));
-    if(idx>=0) annObj['a'+i]={
-      type:'line',xMin:idx,xMax:idx,
-      borderColor:ann.color,borderWidth:2,borderDash:[5,3],
-      label:{content:ann.label,display:true,position:'start',
-             backgroundColor:ann.color+'ee',color:'#fff',
-             font:{size:8.5,weight:'bold'},padding:{x:4,y:2},yAdjust:-8}
-    };
-  });
-
+  var eventPlugin = {
+    id:'evLines',
+    afterDraw: function(chart) {
+      var ctx = chart.ctx;
+      var ca = chart.chartArea;
+      var xScale = chart.scales.x;
+      EVENTS.forEach(function(ev) {
+        var idx = labels.findIndex(function(l) { return l===ev.date||l.startsWith(ev.date); });
+        if(idx<0) return;
+        var xPos = xScale.getPixelForValue(idx);
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([5,3]);
+        ctx.strokeStyle = ev.color;
+        ctx.lineWidth = 1.5;
+        ctx.moveTo(xPos, ca.top);
+        ctx.lineTo(xPos, ca.bottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = ev.color;
+        ctx.font = 'bold 8px sans-serif';
+        ctx.fillText(ev.label, xPos+3, ca.top+10);
+        ctx.restore();
+      });
+    }
+  };
   charts['mood'] = new Chart(document.getElementById('ch-mood').getContext('2d'),{
-    type:'line',
-    data:{labels,datasets:[{data,borderColor:'#2A7F7F',backgroundColor:'rgba(42,127,127,.1)',tension:.4,fill:true,pointRadius:2,spanGaps:true}]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},annotation:{annotations:annObj}},
-      scales:{y:{min:1,max:4,ticks:{callback:v=>[,'😔','😐','😊','😄'][Math.round(v)]||v}},x:{ticks:{font:{size:8},maxRotation:45}}}}
+    type:'line', plugins:[eventPlugin],
+    data:{labels:labels,datasets:[{data:data,borderColor:'#2A7F7F',backgroundColor:'rgba(42,127,127,.1)',tension:.4,fill:true,pointRadius:2,spanGaps:true}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{y:{min:1,max:4,ticks:{callback:function(v){return [,'😔','😐','😊','😄'][Math.round(v)]||v;}}},x:{ticks:{font:{size:8},maxRotation:45}}}}
   });
   renderMediatorTimeline();
 }
 
-function renderMediatorTimeline(){
-  const el = document.getElementById('mediator-timeline');
+function renderMediatorTimeline() {
+  var el = document.getElementById('mediator-timeline');
   if(!el) return;
-  const byMed = (STATS.by_mediator||[]).filter(m=>m.first_date);
-  const sorted = [...byMed].sort((a,b)=>a.first_date.localeCompare(b.first_date));
-  const PAL = ['#2A7F7F','#E8833A','#7c3aed','#16a34a','#2563eb','#dc2626','#d97706','#0891b2','#be185d','#65a30d','#9333ea','#0d9488'];
-  el.innerHTML = `
-    <div style="font-size:.72rem;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem">Historial de mediadores</div>
-    <div style="display:flex;flex-wrap:wrap;gap:.3rem">
-      ${sorted.map((m,i)=>`
-        <div title="${m.first_date.slice(0,7)} → ${m.last_date.slice(0,7)} · ${m.total} informes · Picos: ${m.pct_picos||0}%"
-          style="display:flex;align-items:center;gap:.3rem;background:#f8fafc;border:1px solid var(--border);border-radius:20px;padding:3px 9px;font-size:.73rem">
-          <span style="width:8px;height:8px;border-radius:50%;background:${PAL[i%PAL.length]};flex-shrink:0"></span>
-          <b style="color:var(--dark)">${m.mediator}</b>
-          <span style="color:var(--gray)">${m.first_date.slice(0,7)} – ${m.last_date.slice(0,7)}</span>
-          <span style="color:var(--teal);font-weight:700">${m.total}</span>
-        </div>`).join('')}
-    </div>`;
+  var byMed = (STATS.by_mediator||[]).filter(function(m){return m.first_date;});
+  var sorted = byMed.slice().sort(function(a,b){return a.first_date.localeCompare(b.first_date);});
+  var PAL = ['#2A7F7F','#E8833A','#7c3aed','#16a34a','#2563eb','#dc2626','#d97706','#0891b2','#be185d','#65a30d'];
+  el.innerHTML = '<div style="font-size:.72rem;font-weight:700;color:var(--gray);margin-bottom:.4rem">Historial de mediadores</div><div style="display:flex;flex-wrap:wrap;gap:.3rem">' +
+    sorted.map(function(m,i) {
+      return '<div title="' + (m.first_date||'').slice(0,7) + ' → ' + (m.last_date||'').slice(0,7) + ' · ' + m.total + ' informes · Picos: ' + (m.pct_picos||0) + '%"' +
+        ' style="display:flex;align-items:center;gap:.3rem;background:#f8fafc;border:1px solid var(--border);border-radius:20px;padding:3px 9px;font-size:.73rem">' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:' + PAL[i%PAL.length] + ';flex-shrink:0"></span>' +
+        '<b style="color:var(--dark)">' + m.mediator + '</b>' +
+        '<span style="color:var(--gray)">' + (m.first_date||'').slice(0,7) + ' – ' + (m.last_date||'').slice(0,7) + '</span>' +
+        '<span style="color:var(--teal);font-weight:700">' + m.total + '</span></div>';
+    }).join('') + '</div>';
 }
-function renderMedChart(){
+
+function renderMedChart() {
   dc('med');
-  const data = (STATS.by_mediator||[]).slice(0,12);
-  const pal  = ['#2A7F7F','#E8833A','#7c3aed','#16a34a','#2563eb','#dc2626','#d97706','#0891b2','#be185d','#65a30d','#9333ea','#0d9488'];
+  var data = (STATS.by_mediator||[]).slice(0,12);
+  var pal = ['#2A7F7F','#E8833A','#7c3aed','#16a34a','#2563eb','#dc2626','#d97706','#0891b2','#be185d','#65a30d','#9333ea','#0d9488'];
   charts['med'] = new Chart(document.getElementById('ch-med').getContext('2d'),{
     type:'doughnut',
-    data:{labels:data.map(d=>d.mediator),datasets:[{data:data.map(d=>d.total),backgroundColor:pal,borderWidth:2,borderColor:'#fff'}]},
+    data:{labels:data.map(function(d){return d.mediator;}),datasets:[{data:data.map(function(d){return d.total;}),backgroundColor:pal,borderWidth:2,borderColor:'#fff'}]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:8.5},boxWidth:10}}}}
   });
 }
-function renderAguaChart(monthly){
+
+function renderAguaChart(monthly) {
   dc('agua');
-  const labels = monthly.map(m=>m.month.replace('-','/'));
-  const data   = monthly.map(m=>m.avg_agua||null);
+  var labels = monthly.map(function(m){return m.month.replace('-','/');});
+  var data = monthly.map(function(m){return m.avg_agua||null;});
   charts['agua'] = new Chart(document.getElementById('ch-agua').getContext('2d'),{
     type:'bar',
-    data:{labels,datasets:[{data,backgroundColor:data.map(v=>v&&v>=600?'rgba(42,127,127,.7)':'rgba(232,131,58,.7)'),borderRadius:3}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{y:{ticks:{callback:v=>v+'ml'}},x:{ticks:{font:{size:8},maxRotation:45}}}}
+    data:{labels:labels,datasets:[{data:data,backgroundColor:data.map(function(v){return v&&v>=600?'rgba(42,127,127,.7)':'rgba(232,131,58,.7)'}),borderRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:function(v){return v+'ml';}}},x:{ticks:{font:{size:8},maxRotation:45}}}}
   });
 }
-function renderCondChart(monthly){
+
+function renderCondChart(monthly) {
   dc('cond');
-  const labels = monthly.map(m=>m.month.replace('-','/'));
+  var labels = monthly.map(function(m){return m.month.replace('-','/');});
   charts['cond'] = new Chart(document.getElementById('ch-cond').getContext('2d'),{
     type:'line',
-    data:{labels,datasets:[{data:monthly.map(m=>m.pct_picos),borderColor:'#E8833A',backgroundColor:'rgba(232,131,58,.1)',tension:.4,fill:true,pointRadius:2}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%'}},x:{ticks:{font:{size:8},maxRotation:45}}}}
+    data:{labels:labels,datasets:[{data:monthly.map(function(m){return m.pct_picos;}),borderColor:'#E8833A',backgroundColor:'rgba(232,131,58,.1)',tension:.4,fill:true,pointRadius:2}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{min:0,max:100,ticks:{callback:function(v){return v+'%';}}},x:{ticks:{font:{size:8},maxRotation:45}}}}
   });
 }
 
-// ── RENDER LIST ────────────────────────────────────────────────────────────────
+// ── LISTA INFORMES ────────────────────────────────────────────────────────────
 function renderList() {
-  const years = ['all', ...[...new Set(REPORTS.map(r=>r.date.slice(0,4)))].sort().reverse()];
-  const filtered = currentListYear==='all' ? REPORTS : REPORTS.filter(r=>r.date.startsWith(currentListYear));
-
-  const ysEl = `<div class="year-tabs">${years.map(y=>`
-    <button class="yt${y===currentListYear?' active':''}" onclick="setListYear('${y}')">
-      ${y==='all'?'Todos':y}
-      <span style="font-size:.68rem;opacity:.7;margin-left:2px">${y==='all'?REPORTS.length:REPORTS.filter(r=>r.date.startsWith(y)).length}</span>
-    </button>`).join('')}</div>`;
-
-  const ms = {muy_positivo:4,positivo:3,neutro:2,negativo:1,'?':2.5};
-  const moods  = filtered.map(r=>ms[r.mood]||2.5);
-  const avgM   = moods.length ? (moods.reduce((a,b)=>a+b,0)/moods.length).toFixed(2) : '—';
-  const pctPos = filtered.length ? Math.round(filtered.filter(r=>r.mood==='positivo'||r.mood==='muy_positivo').length/filtered.length*100) : '—';
-  const pctP   = filtered.length ? Math.round(filtered.filter(r=>r.conducta>0).length/filtered.length*100) : '—';
-  const aguas  = filtered.filter(r=>r.agua&&r.agua<3000).map(r=>r.agua);
-  const avgA   = aguas.length ? Math.round(aguas.reduce((a,b)=>a+b,0)/aguas.length)+'ml' : '—';
-  const meds   = new Set(filtered.map(r=>r.mediator)).size;
-
-  const summaryEl = `<div class="year-summary-bar">
-    <span class="ysb-stat">📊 <b>${filtered.length}</b> informes</span>
-    <span class="ysb-stat">😊 Ánimo: <b>${avgM}</b></span>
-    <span class="ysb-stat">😊 Positivos: <b>${pctPos}%</b></span>
-    <span class="ysb-stat">⚡ Picos: <b>${pctP}%</b></span>
-    <span class="ysb-stat">💧 Agua: <b>${avgA}</b></span>
-    <span class="ysb-stat">👥 <b>${meds}</b> mediadores</span>
-  </div>`;
-
-  const rows = filtered.map((r,i)=>`
-    <tr onclick="openDetail(${i})">
-      <td class="td-date">${r.date}</td>
-      <td style="font-size:.75rem">${TURN_LABEL[r.turn]||r.turn||'—'}</td>
-      <td style="font-size:.78rem;max-width:95px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.mediator}</td>
-      <td><span class="badge ${MOOD_CLASS[r.mood]||'b-q'}" style="font-size:.65rem">${MOOD_LABEL[r.mood]?.split(' ').slice(-1)[0]||'?'}</span></td>
-      <td><span class="c-dot ${r.conducta===0?'c0':r.conducta<=1?'c1':'c2'}"></span>${r.conducta||0}</td>
-      <td style="font-size:.75rem">${r.agua?r.agua+'ml':'—'}</td>
-      <td style="font-size:.72rem;color:var(--gray);max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(r.vocab||[]).slice(0,3).join(', ')||'—'}</td>
-    </tr>`).join('');
-
-  document.getElementById('list-content').innerHTML = `
-    ${ysEl}${summaryEl}
-    <div style="background:#fff;border-radius:var(--r);box-shadow:var(--shadow-sm);border:1px solid var(--border);overflow:hidden">
-      <div style="overflow-x:auto">
-        <table>
-          <thead><tr>
-            <th>Fecha</th><th>Turno</th><th>Mediador/a</th>
-            <th>Estado</th><th>Conducta</th><th>Agua</th><th>Vocabulario</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`;
+  var years = ['all'].concat([...new Set(REPORTS.map(function(r){return r.date.slice(0,4);})
+  )].sort().reverse());
+  var filtered = currentListYear==='all' ? REPORTS : REPORTS.filter(function(r){return r.date.startsWith(currentListYear);});
+  var el = document.getElementById('list-content');
+  var ybtns = years.map(function(y){
+    return '<button class="ysb-btn'+(currentListYear===y?' active':'')+'" onclick="setListYear(\''+y+'\')">'+( y==='all'?'Todos':y)+'</button>';
+  }).join('');
+  var rows = filtered.map(function(r,i) {
+    var vc = Array.isArray(r.vocab)?r.vocab:(typeof r.vocab==='string'?JSON.parse(r.vocab||'[]'):[]);
+    return '<tr onclick="openDetail('+i+')" style="cursor:pointer">' +
+      '<td>'+r.date+'</td>' +
+      '<td><span class="badge '+( MOOD_CLASS[r.mood]||'b-q')+'">'+( MOOD_LABEL[r.mood]||'?')+'</span></td>' +
+      '<td style="font-size:.82rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.mediator+'</td>' +
+      '<td style="font-size:.8rem">'+( TURN_LABEL[r.turn]||r.turn||'—')+'</td>' +
+      '<td style="text-align:center">'+(r.agua?r.agua+'ml':'—')+'</td>' +
+      '<td style="text-align:center"><span class="badge '+(r.conducta>0?'b-ne':'b-p')+'">'+(r.conducta>0?r.conducta+' pico'+(r.conducta>1?'s':''):'✓')+'</span></td>' +
+      '<td style="font-size:.72rem;color:var(--gray);max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+vc.slice(0,3).join(', ')+'</td>' +
+      '</tr>';
+  }).join('');
+  el.innerHTML = '<div class="ysb" style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.8rem;align-items:center">' +
+    ybtns + '<span class="ysb-stat" style="margin-left:auto;font-size:.78rem;color:var(--gray)">📊 <b>'+filtered.length+'</b> informes</span></div>' +
+    '<div style="overflow-x:auto"><table class="rep-table"><thead><tr>' +
+    '<th>Fecha</th><th>Ánimo</th><th>Mediador/a</th><th>Turno</th><th>Agua</th><th>Conducta</th><th>Vocab</th>' +
+    '</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 
 function setListYear(y) { currentListYear = y; renderList(); }
 
-// ── RENDER LOG ─────────────────────────────────────────────────────────────────
+// ── LOG SUBIDAS ───────────────────────────────────────────────────────────────
 async function renderLog() {
-  document.getElementById('log-content').innerHTML = '<div class="loading"><div class="spinner"></div> Cargando...</div>';
-  const r = await apiFetch('/api/upload-log');
-  const d = await r.json();
-  const logs = d.logs || [];
-  if (!logs.length) {
-    document.getElementById('log-content').innerHTML = '<div class="loading">No hay subidas registradas</div>';
-    return;
-  }
-  document.getElementById('log-content').innerHTML =
-    `<h3 style="font-size:.88rem;font-weight:600;margin-bottom:.7rem;color:var(--dark)">Últimas subidas de datos</h3>` +
-    logs.map(l=>`
-      <div class="log-row">
-        <span class="log-date">${l.uploaded_at?.slice(0,16).replace('T',' ')||'—'}</span>
-        <span>📊 ${l.total_in_file} en archivo</span>
-        <span class="log-new">✅ +${l.new_inserted} nuevos</span>
-        <span class="log-dup">♻️ ${l.duplicates} duplicados</span>
-        <span style="font-size:.73rem;color:var(--gray)">${l.date_from||''} → ${l.date_to||''}</span>
-        <span style="font-size:.73rem;color:var(--gray)">por ${l.uploaded_by||'—'}</span>
-      </div>`).join('');
+  var el = document.getElementById('log-content');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Cargando...</div>';
+  var logs = (STATS && STATS.upload_log) || [];
+  if(!logs.length) { el.innerHTML = '<p style="color:var(--gray);padding:1rem">Sin historial de subidas.</p>'; return; }
+  el.innerHTML = '<table class="rep-table"><thead><tr><th>Fecha subida</th><th>Rango datos</th><th>En archivo</th><th>Nuevos</th><th>Duplicados</th></tr></thead><tbody>' +
+    logs.map(function(l) {
+      return '<tr><td style="font-size:.8rem">'+(l.uploaded_at||'').slice(0,16)+'</td>' +
+        '<td style="font-size:.8rem">'+(l.date_from||'').slice(0,10)+' → '+(l.date_to||'').slice(0,10)+'</td>' +
+        '<td style="text-align:center">'+l.total_in_file+'</td>' +
+        '<td style="text-align:center;color:var(--green);font-weight:700">+'+l.new_inserted+'</td>' +
+        '<td style="text-align:center;color:var(--gray)">'+l.duplicates+'</td></tr>';
+    }).join('') + '</tbody></table>';
 }
 
-// ── UPLOAD ─────────────────────────────────────────────────────────────────────
+// ── DETAIL INFORME ────────────────────────────────────────────────────────────
+function openDetail(idx) {
+  var r = REPORTS[idx]; if (!r) return;
+  document.getElementById('det-title').textContent = 'Informe ' + r.date;
+  document.getElementById('det-meta').textContent = r.mediator + ' · ' + (TURN_LABEL[r.turn]||r.turn||'—');
+  var vocab = Array.isArray(r.vocab) ? r.vocab : (typeof r.vocab==='string'?JSON.parse(r.vocab||'[]'):[]);
+  var html = '<div class="d-grid">' +
+    '<div class="d-stat"><div class="d-stat-val"><span class="badge '+(MOOD_CLASS[r.mood]||'b-q')+'">'+(MOOD_LABEL[r.mood]||'?')+'</span></div><div class="d-stat-label">Estado ánimo</div></div>' +
+    '<div class="d-stat"><div class="d-stat-val">'+(r.agua?r.agua+'ml':'—')+'</div><div class="d-stat-label">Hidratación</div></div>' +
+    '<div class="d-stat"><div class="d-stat-val">'+(r.conducta||0)+' pico'+(r.conducta!==1?'s':'')+'</div><div class="d-stat-label">Conducta</div></div>' +
+    '<div class="d-stat"><div class="d-stat-val">'+(r.pis!=null?r.pis:'—')+'</div><div class="d-stat-label">Pis (veces)</div></div>' +
+    '</div>';
+  var sec = function(icon, title, val) { return val ? '<div class="ps"><div class="ps-title">'+icon+' '+title+'</div><div class="dtext">'+val+'</div></div>' : ''; };
+  html += sec('🚿','Baño', r.banyo);
+  html += sec('🌡️','Estado', r.estado);
+  html += sec('💬','Comunicación', r.comunicacion);
+  if(vocab.length) html += '<div class="ps"><div class="ps-title">🗣️ Vocabulario</div><div class="chips">'+vocab.map(function(w){return '<span class="chip">'+w+'</span>';}).join('')+'</div></div>';
+  html += sec('🎯','Actividades', r.actividades);
+  html += sec('🍽️','Comidas', r.comidas);
+  html += sec('💊','Medicación', r.medicacion);
+  html += sec('📝','Notas', r.notas);
+  document.getElementById('det-body').innerHTML = html;
+  document.getElementById('overlay').classList.add('open');
+}
+
+// ── UPLOAD ────────────────────────────────────────────────────────────────────
 function openUpload() { document.getElementById('upload-modal').classList.add('open'); resetUpload(); }
 function closeUpload() { document.getElementById('upload-modal').classList.remove('open'); }
+function closeDetail() { document.getElementById('overlay').classList.remove('open'); }
+
 function resetUpload() {
   document.getElementById('prog-wrap').style.display='none';
   document.getElementById('upload-result').style.display='none';
@@ -734,20 +745,12 @@ function resetUpload() {
   document.getElementById('prog-fill').style.width='0%';
 }
 
-document.addEventListener('DOMContentLoaded', ()=>{
-  const dz = document.getElementById('drop-zone');
-  dz.addEventListener('dragover', e=>{e.preventDefault();dz.classList.add('drag-over');});
-  dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
-  dz.addEventListener('drop', e=>{e.preventDefault();dz.classList.remove('drag-over');if(e.dataTransfer.files[0])handleUpload(e.dataTransfer.files[0]);});
-
-  // Auto-login si hay credenciales guardadas
-  const savedPwd = localStorage.getItem('haptica_pwd');
-  if (savedPwd) {
-    document.getElementById('api-pwd').value = savedPwd;
-    API_URL = window.location.origin; API_PWD = savedPwd;
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('app').classList.remove('hidden');
-    loadAll();
+document.addEventListener('DOMContentLoaded', function() {
+  var dz = document.getElementById('drop-zone');
+  if(dz) {
+    dz.addEventListener('dragover', function(e){e.preventDefault();dz.classList.add('drag-over');});
+    dz.addEventListener('dragleave', function(){dz.classList.remove('drag-over');});
+    dz.addEventListener('drop', function(e){e.preventDefault();dz.classList.remove('drag-over');if(e.dataTransfer.files[0])handleUpload(e.dataTransfer.files[0]);});
   }
 });
 
@@ -760,40 +763,31 @@ async function handleUpload(file) {
   if (!file || !file.name.endsWith('.txt')) { alert('Sube un archivo .txt exportado de WhatsApp'); return; }
   document.getElementById('prog-wrap').style.display='block';
   setProgress(20,'Subiendo archivo...');
-
-  const formData = new FormData();
+  var formData = new FormData();
   formData.append('file', file);
-
   try {
-    setProgress(50, 'Procesando en servidor...');
-    const r = await fetch(`${API_URL}/api/upload`, {
-      method: 'POST',
-      headers: { 'X-Password': API_PWD, 'X-User': 'dashboard' },
-      body: formData
+    setProgress(50, 'Procesando...');
+    var r = await fetch(API_URL+'/api/upload', {
+      method:'POST', headers:{'X-Password':API_PWD}, body:formData
     });
-    setProgress(90, 'Finalizando...');
-    const d = await r.json();
-    setProgress(100, 'Listo');
-
-    const res = document.getElementById('upload-result');
-    res.style.display = 'block';
-    res.classList.toggle('error', !d.ok);
-
-    if (d.ok) {
-      document.getElementById('ur1').innerHTML = `📊 Total en archivo: <b>${d.total_in_file}</b>`;
-      document.getElementById('ur2').innerHTML = `✅ Informes nuevos: <b>${d.new_inserted}</b>`;
-      document.getElementById('ur3').innerHTML = `♻️ Ya registrados: <b>${d.duplicates}</b>`;
-      document.getElementById('ur4').innerHTML = `📅 Rango: <b>${d.date_from} → ${d.date_to}</b>`;
-      if (d.new_inserted > 0) document.getElementById('btn-reload').style.display = 'block';
+    setProgress(90,'Finalizando...');
+    var d = await r.json();
+    setProgress(100,'Listo');
+    var res = document.getElementById('upload-result');
+    res.style.display='block'; res.classList.toggle('error',!d.ok);
+    if(d.ok) {
+      document.getElementById('ur1').innerHTML='📊 Total en archivo: <b>'+d.total_in_file+'</b>';
+      document.getElementById('ur2').innerHTML='✅ Informes nuevos: <b>'+d.new_inserted+'</b>';
+      document.getElementById('ur3').innerHTML='♻️ Ya registrados: <b>'+d.duplicates+'</b>';
+      document.getElementById('ur4').innerHTML='📅 Rango: <b>'+d.date_from+' → '+d.date_to+'</b>';
+      if(d.new_inserted>0) document.getElementById('btn-reload').style.display='block';
     } else {
-      document.getElementById('ur1').innerHTML = `❌ Error: ${d.error}`;
-      ['ur2','ur3','ur4'].forEach(id=>document.getElementById(id).innerHTML='');
+      document.getElementById('ur1').innerHTML='❌ Error: '+d.error;
     }
   } catch(e) {
-    setProgress(0,'');
-    const res = document.getElementById('upload-result');
+    var res=document.getElementById('upload-result');
     res.style.display='block'; res.classList.add('error');
-    document.getElementById('ur1').innerHTML = `❌ Error de conexión: ${e.message}`;
+    document.getElementById('ur1').innerHTML='❌ Error: '+e.message;
   }
 }
 
@@ -803,87 +797,55 @@ async function reloadData() {
   showTab('overview');
 }
 
-// ── DETAIL ─────────────────────────────────────────────────────────────────────
-function openDetail(idx) {
-  const r = REPORTS[idx]; if (!r) return;
-  document.getElementById('det-title').textContent = `Informe ${r.date}`;
-  document.getElementById('det-meta').textContent = `${r.mediator} · ${TURN_LABEL[r.turn]||r.turn||'—'}`;
-  const vocab = Array.isArray(r.vocab) ? r.vocab : (typeof r.vocab==='string'?JSON.parse(r.vocab):[]);
-  document.getElementById('det-body').innerHTML = `
-    <div class="d-grid">
-      <div class="d-stat"><div class="d-stat-val"><span class="badge ${MOOD_CLASS[r.mood]||'b-q'}">${MOOD_LABEL[r.mood]||'?'}</span></div><div class="d-stat-label">Estado ánimo</div></div>
-      <div class="d-stat"><div class="d-stat-val">${r.agua?r.agua+'ml':'—'}</div><div class="d-stat-label">Hidratación</div></div>
-      <div class="d-stat"><div class="d-stat-val">${r.conducta||0} pico${r.conducta!==1?'s':''}</div><div class="d-stat-label">Conducta</div></div>
-      <div class="d-stat"><div class="d-stat-val">${r.pis!=null?r.pis:'—'}</div><div class="d-stat-label">Pis (veces)</div></div>
-    </div>
-    ${r.estado?`<div class="ps"><div class="ps-title">🌡️ Estado</div><div class="dtext">${r.estado}</div></div>`:''}
-    ${r.comunicacion?`<div class="ps"><div class="ps-title">💬 Comunicación</div><div class="dtext">${r.comunicacion}</div></div>`:''}
-    ${vocab.length?`<div class="ps"><div class="ps-title">🗣️ Vocabulario</div><div class="chips">${vocab.map(w=>`<span class="chip">${w}</span>`).join('')}</div></div>`:''}
-    ${r.actividades?`<div class="ps"><div class="ps-title">🎯 Actividades</div><div class="dtext">${r.actividades}</div></div>`:''}
-    ${r.comidas?`<div class="ps"><div class="ps-title">🍽️ Comidas</div><div class="dtext">${r.comidas}</div></div>`:''}
-    ${r.medicacion?`<div class="ps"><div class="ps-title">💊 Medicación</div><div class="dtext">${r.medicacion}</div></div>`:''}
-    ${r.notas?`<div class="ps"><div class="ps-title">📝 Notas</div><div class="dtext">${r.notas}</div></div>`:''}`;
-  document.getElementById('overlay').classList.add('open');
-}
-
 // ── ANOTACIONES ───────────────────────────────────────────────────────────────
 function openAnnotations() {
   document.getElementById('ann-modal').classList.add('open');
   renderAnnList();
 }
-function closeAnnotations() {
-  document.getElementById('ann-modal').classList.remove('open');
-}
+function closeAnnotations() { document.getElementById('ann-modal').classList.remove('open'); }
 
 function renderAnnList() {
-  const el = document.getElementById('ann-list');
-  if (!el) return;
-  const anns = STATS.annotations || [];
-  if (!anns.length) {
-    el.innerHTML = '<p style="font-size:.82rem;color:#9ca3af;text-align:center;padding:.5rem">No hay anotaciones personalizadas todavía.</p>';
+  var el = document.getElementById('ann-list'); if(!el) return;
+  var anns = (STATS && STATS.annotations) || [];
+  if(!anns.length) {
+    el.innerHTML='<p style="font-size:.82rem;color:#9ca3af;text-align:center;padding:.5rem">No hay anotaciones personalizadas todavía.</p>';
     return;
   }
-  el.innerHTML = anns.map(a => `
-    <div style="display:flex;align-items:center;gap:.5rem;padding:.5rem .6rem;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:.3rem">
-      <span style="width:10px;height:10px;border-radius:50%;background:${a.color};flex-shrink:0"></span>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:.82rem;font-weight:600;color:#1a2332">${a.date.slice(0,7)} · ${a.label}</div>
-        ${a.description ? `<div style="font-size:.75rem;color:#6b7280">${a.description}</div>` : ''}
-      </div>
-      <button onclick="deleteAnnotation(${a.id})" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:3px 8px;font-size:.75rem;cursor:pointer">✕</button>
-    </div>`).join('');
+  el.innerHTML = anns.map(function(a) {
+    return '<div style="display:flex;align-items:center;gap:.5rem;padding:.5rem .6rem;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:.3rem">' +
+      '<span style="width:10px;height:10px;border-radius:50%;background:'+a.color+';flex-shrink:0"></span>' +
+      '<div style="flex:1"><div style="font-size:.82rem;font-weight:600">'+a.date.slice(0,7)+' · '+a.label+'</div>' +
+      (a.description?'<div style="font-size:.75rem;color:#6b7280">'+a.description+'</div>':'') +
+      '</div><button onclick="deleteAnnotation('+a.id+')" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:3px 8px;font-size:.75rem;cursor:pointer">✕</button></div>';
+  }).join('');
 }
 
 async function saveAnnotation() {
-  const date  = document.getElementById('ann-date').value;
-  const label = document.getElementById('ann-label').value.trim();
-  const desc  = document.getElementById('ann-desc').value.trim();
-  const color = document.getElementById('ann-color').value;
-  const msg   = document.getElementById('ann-msg');
-  if (!date || !label) { msg.style.color='#dc2626'; msg.textContent='Fecha y etiqueta son obligatorias.'; return; }
-  msg.style.color='#6b7280'; msg.textContent='Guardando...';
+  var date=document.getElementById('ann-date').value;
+  var label=document.getElementById('ann-label').value.trim();
+  var desc=document.getElementById('ann-desc').value.trim();
+  var color=document.getElementById('ann-color').value;
+  var msg=document.getElementById('ann-msg');
+  if(!date||!label){msg.style.color='#dc2626';msg.textContent='Fecha y etiqueta obligatorias.';return;}
+  msg.style.color='#6b7280';msg.textContent='Guardando...';
   try {
-    const r = await apiFetch('/api/annotations', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({date, label, description:desc, color, type:'event'})
-    });
-    const d = await r.json();
-    if (d.ok) {
-      msg.style.color='#16a34a'; msg.textContent='✅ Guardada';
+    var r=await apiFetch('/api/annotations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,label,description:desc,color,type:'event'})});
+    var d=await r.json();
+    if(d.ok){
+      msg.style.color='#16a34a';msg.textContent='✅ Guardada';
       document.getElementById('ann-label').value='';
       document.getElementById('ann-desc').value='';
-      await loadStats(); renderAnnList(); renderOverview();
-      setTimeout(()=>msg.textContent='', 2000);
+      await loadStats();renderAnnList();renderOverview();
+      setTimeout(function(){msg.textContent='';},2000);
     }
-  } catch(e) { msg.style.color='#dc2626'; msg.textContent='Error: '+e.message; }
+  } catch(e){msg.style.color='#dc2626';msg.textContent='Error: '+e.message;}
 }
 
 async function deleteAnnotation(id) {
-  if (!confirm('¿Eliminar esta anotación?')) return;
-  await apiFetch(`/api/annotations/${id}`, {method:'DELETE'});
-  await loadStats(); renderAnnList(); renderOverview();
+  if(!confirm('¿Eliminar esta anotación?'))return;
+  await apiFetch('/api/annotations/'+id,{method:'DELETE'});
+  await loadStats();renderAnnList();renderOverview();
 }
-
 </script>
 </body>
 </html>
