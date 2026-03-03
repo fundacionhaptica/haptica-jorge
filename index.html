@@ -437,29 +437,38 @@ function buildQuery(extra={}) {
 }
 
 // ── LOAD ───────────────────────────────────────────────────────────────────────
-async function loadAll() {
-  await Promise.all([loadStats(), loadMediators(), loadReports()]);
+async async function loadAll() {
+  try {
+    await Promise.allSettled([loadStats(), loadMediators(), loadReports()]);
+  } catch(e) { console.warn('loadAll error:', e); }
   renderOverview();
 }
 
 async function loadStats() {
-  const r = await apiFetch('/api/stats');
-  STATS = await r.json();
-  updateHeader();
+  try {
+    const r = await apiFetch('/api/stats');
+    if (!r.ok) throw new Error('stats '+r.status);
+    STATS = await r.json();
+    updateHeader();
+  } catch(e) { console.warn('loadStats:', e); STATS = {summary:{},monthly:[],by_mediator:[],annotations:[]}; }
 }
 
 async function loadMediators() {
-  const r = await apiFetch('/api/mediators');
-  const d = await r.json();
-  MEDIATORS = d.mediators || [];
-  const sel = document.getElementById('med-sel');
-  sel.innerHTML = '<option value="">Todos</option>' + MEDIATORS.map(m=>`<option value="${m}">${m}</option>`).join('');
+  try {
+    const r = await apiFetch('/api/mediators');
+    const d = await r.json();
+    MEDIATORS = d.mediators || [];
+    const sel = document.getElementById('med-sel');
+    sel.innerHTML = '<option value="">Todos</option>' + MEDIATORS.map(m=>`<option value="${m}">${m}</option>`).join('');
+  } catch(e) { console.warn('loadMediators:', e); }
 }
 
 async function loadReports() {
-  const r = await apiFetch('/api/reports' + buildQuery());
-  const d = await r.json();
-  REPORTS = d.reports || [];
+  try {
+    const r = await apiFetch('/api/reports' + buildQuery());
+    const d = await r.json();
+    REPORTS = d.reports || [];
+  } catch(e) { console.warn('loadReports:', e); REPORTS = []; }
 }
 
 function updateHeader() {

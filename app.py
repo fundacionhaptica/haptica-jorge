@@ -297,7 +297,7 @@ def get_stats():
         ROUND(AVG(CASE WHEN mood='muy_positivo' THEN 4 WHEN mood='positivo' THEN 3
                        WHEN mood='neutro' THEN 2 WHEN mood='negativo' THEN 1 ELSE 2.5 END)::numeric,2) AS avg_mood,
         MIN(date) AS first_date, MAX(date) AS last_date
-        FROM reports WHERE mediator NOT LIKE '%(familia)%' AND mediator != 'Carmen (dirección)'
+        FROM reports
         GROUP BY mediator ORDER BY total DESC""")
     by_med = []
     for r in cur.fetchall():
@@ -307,21 +307,24 @@ def get_stats():
         by_med.append(d)
     cur.execute("SELECT mood, COUNT(*) AS n FROM reports GROUP BY mood ORDER BY n DESC")
     mood_dist = [dict(r) for r in cur.fetchall()]
-    cur.execute("""SELECT uploaded_at,total_in_file,new_inserted,duplicates,date_from,date_to,uploaded_by
-        FROM upload_log ORDER BY uploaded_at DESC LIMIT 10""")
     uploads = []
-    for r in cur.fetchall():
-        d = dict(r)
-        for k in ['uploaded_at','date_from','date_to']:
-            if d.get(k): d[k] = d[k].isoformat()
-        uploads.append(d)
-    # Anotaciones
-    cur.execute("SELECT id,date,type,label,description,color FROM annotations ORDER BY date")
+    try:
+        cur.execute("""SELECT uploaded_at,total_in_file,new_inserted,duplicates,date_from,date_to,uploaded_by
+            FROM upload_log ORDER BY uploaded_at DESC LIMIT 10""")
+        for r in cur.fetchall():
+            d = dict(r)
+            for k in ['uploaded_at','date_from','date_to']:
+                if d.get(k): d[k] = d[k].isoformat()
+            uploads.append(d)
+    except: pass
     annotations = []
-    for r in cur.fetchall():
-        d = dict(r)
-        d['date'] = d['date'].isoformat() if d['date'] else None
-        annotations.append(d)
+    try:
+        cur.execute("SELECT id,date,type,label,description,color FROM annotations ORDER BY date")
+        for r in cur.fetchall():
+            d = dict(r)
+            d['date'] = d['date'].isoformat() if d['date'] else None
+            annotations.append(d)
+    except: pass
     return jsonify({'summary': s, 'monthly': monthly, 'by_mediator': by_med,
                     'mood_dist': mood_dist, 'upload_log': uploads, 'annotations': annotations})
 
@@ -330,7 +333,7 @@ def get_stats():
 def get_mediators():
     db = get_db(); cur = db.cursor()
     cur.execute("""SELECT DISTINCT mediator FROM reports
-        WHERE mediator NOT LIKE '%(familia)%' AND mediator != 'Carmen (dirección)'
+        
         ORDER BY mediator""")
     return jsonify({'mediators': [r['mediator'] for r in cur.fetchall()]})
 
