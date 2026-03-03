@@ -220,7 +220,7 @@ tbody td{padding:6px 10px;vertical-align:middle}
     <div class="login-logo">🤝</div>
     <div class="login-title">Jorge · Fundación HÁPTICA</div>
     <div class="login-sub">Dashboard de seguimiento diario</div>
-    <input class="login-input" id="api-pwd" type="password"
+    <input class="login-input" id="api-pwd" type="password" onkeydown="if(event.key==='Enter')doLogin()"
       placeholder="Contraseña de acceso" autocomplete="current-password">
     <button class="login-btn" onclick="doLogin()">Entrar</button>
     <div class="login-err" id="login-err">Contraseña incorrecta o URL no válida</div>
