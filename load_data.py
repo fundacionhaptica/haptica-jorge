@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Script de carga inicial - se ejecuta una vez en Railway"""
 import os, json, psycopg2
 
 DB = os.environ.get('DATABASE_URL') or os.environ.get('DATABASE_PRIVATE_URL')
@@ -9,41 +8,41 @@ if not DB:
 db = psycopg2.connect(DB)
 cur = db.cursor()
 
-# Ver cuántos hay
-cur.execute("SELECT COUNT(*) FROM reports")
-n = cur.fetchone()[0]
-print(f"Registros actuales: {n}")
+cur.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='reports'")
+table_exists = cur.fetchone()[0] > 0
 
-if n > 100:
-    print("BD ya tiene datos, nada que hacer"); exit(0)
+if table_exists:
+    cur.execute("SELECT COUNT(*) FROM reports")
+    n = cur.fetchone()[0]
+    print(f"Registros actuales: {n}")
+    if n > 100:
+        print("BD ya tiene datos, saliendo"); exit(0)
 
-# Añadir seq si no existe — verificar primero
-cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='reports' AND column_name='seq'")
-has_seq = cur.fetchone() is not None
-print(f"Columna seq existe: {has_seq}")
-if not has_seq:
-    cur.execute("ALTER TABLE reports ADD COLUMN seq INTEGER DEFAULT 1")
-    db.commit()
-    print("✅ Columna seq añadida")
+print("Recreando tabla reports con seq...")
+cur.execute("DROP TABLE IF EXISTS reports CASCADE")
+cur.execute("""CREATE TABLE reports (
+    id SERIAL PRIMARY KEY,
+    date DATE NOT NULL,
+    mediator TEXT NOT NULL,
+    turn TEXT DEFAULT 'sin especificar',
+    seq INTEGER DEFAULT 1,
+    mood TEXT DEFAULT '?',
+    conducta INTEGER DEFAULT 0,
+    estiramientos INTEGER DEFAULT 0,
+    agua INTEGER, pis INTEGER,
+    banyo TEXT DEFAULT '', estado TEXT DEFAULT '',
+    comunicacion TEXT DEFAULT '', actividades TEXT DEFAULT '',
+    comidas TEXT DEFAULT '', medicacion TEXT DEFAULT '',
+    notas TEXT DEFAULT '', vocab JSONB DEFAULT '[]',
+    formato TEXT DEFAULT 'v1', body_preview TEXT DEFAULT '',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(date, mediator, turn, seq)
+)""")
+cur.execute("CREATE INDEX idx_reports_date ON reports(date)")
+cur.execute("CREATE INDEX idx_reports_mediator ON reports(mediator)")
+db.commit()
+print("✅ Tabla creada")
 
-# Borrar constraints viejos
-for constraint in ['reports_date_mediator_turn_key', 'reports_date_mediator_turn_seq_key']:
-    try:
-        cur.execute(f"ALTER TABLE reports DROP CONSTRAINT IF EXISTS {constraint}")
-        db.commit()
-    except: db.rollback()
-
-# Crear índice único correcto
-try:
-    cur.execute("DROP INDEX IF EXISTS reports_unique_seq")
-    cur.execute("CREATE UNIQUE INDEX reports_unique_seq ON reports(date,mediator,turn,seq)")
-    db.commit()
-    print("✅ Índice único creado")
-except Exception as e:
-    db.rollback()
-    print(f"Índice: {e}")
-
-# Cargar seed
 with open('seed.json', encoding='utf-8') as f:
     data = json.load(f)
 
@@ -67,9 +66,9 @@ for r in data:
         if cur.rowcount > 0: inserted += 1
     except Exception as e:
         errors += 1
-        if errors <= 3: print(f"  ERROR: {e} | {r.get('date')} {r.get('mediator')}")
+        if errors <= 5: print(f"  ERROR fila {errors}: {e}")
         db.rollback()
 
 db.commit()
 cur.close(); db.close()
-print(f"✅ Insertados: {inserted}, Errores: {errors}")
+print(f"✅ Resultado: {inserted} insertados, {errors} errores de {len(data)} total")
