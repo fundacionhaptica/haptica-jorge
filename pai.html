@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PAI · Jorge · Fundación HÁPTICA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --teal:#2A7F7F;--teal2:#1f6060;--teal3:#0d4040;
+  --teal-pale:#e8f4f4;--teal-light:rgba(42,127,127,.1);
+  --orange:#E8833A;--orange-pale:#fef4ec;
+  --green:#16a34a;--green-pale:#f0fdf4;
+  --red:#dc2626;--red-pale:#fef2f2;
+  --yellow:#d97706;--yellow-pale:#fffbeb;
+  --purple:#7c3aed;--purple-pale:#f5f3ff;
+  --dark:#1a2332;--mid:#374151;--gray:#6b7280;--gray-light:#9ca3af;
+  --border:#e5e7eb;--border2:#d1d5db;
+  --bg:#f0f4f8;--white:#fff;
+  --shadow:0 4px 24px rgba(42,127,127,.12);
+  --shadow-sm:0 2px 8px rgba(0,0,0,.06);
+  --r:14px;--r-sm:9px;--r-xs:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--dark);min-height:100vh}
+
+/* ── LOGIN ── */
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1rem;
+  background:linear-gradient(135deg,var(--teal3) 0%,var(--teal) 50%,#3a9f9f 100%)}
+.login-card{background:var(--white);border-radius:20px;padding:2.5rem 2rem;max-width:360px;width:100%;
+  box-shadow:0 20px 60px rgba(0,0,0,.25);text-align:center}
+.login-logo{font-size:2.8rem;margin-bottom:.4rem}
+.login-title{font-family:'DM Serif Display',serif;font-size:1.5rem;color:var(--teal2);margin-bottom:.15rem}
+.login-sub{font-size:.83rem;color:var(--gray);margin-bottom:1.6rem}
+.login-input{width:100%;padding:11px 14px;border-radius:10px;border:1.5px solid var(--border);
+  font-size:.93rem;font-family:inherit;margin-bottom:.75rem;outline:none;transition:border .15s}
+.login-input:focus{border-color:var(--teal)}
+.login-btn{width:100%;padding:11px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--teal),var(--teal2));
+  color:#fff;font-size:.95rem;font-weight:600;cursor:pointer;transition:opacity .15s}
+.login-btn:hover{opacity:.88}
+.login-err{color:var(--red);font-size:.8rem;margin-top:.5rem;display:none}
+
+/* ── APP ── */
+#app{display:none}
+
+/* ── HEADER ── */
+.hdr{background:linear-gradient(135deg,var(--teal2),var(--teal3));padding:0 1.6rem;
+  display:flex;align-items:center;justify-content:space-between;height:56px;
+  position:sticky;top:0;z-index:100;box-shadow:0 2px 20px rgba(0,0,0,.2)}
+.hdr-brand{display:flex;align-items:center;gap:.7rem}
+.hdr-icon{width:34px;height:34px;background:rgba(255,255,255,.15);border-radius:9px;
+  display:flex;align-items:center;justify-content:center;font-size:17px}
+.hdr-title{color:#fff;font-family:'DM Serif Display',serif;font-size:1.1rem}
+.hdr-sub{color:rgba(255,255,255,.55);font-size:.68rem;margin-top:-2px}
+.hdr-right{display:flex;gap:.5rem}
+.hdr-btn{padding:5px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);
+  color:#fff;font-size:.8rem;cursor:pointer;font-family:inherit;transition:all .15s}
+.hdr-btn:hover{background:rgba(255,255,255,.2)}
+.hdr-btn.primary{background:var(--orange);border-color:var(--orange)}
+
+/* ── MAIN LAYOUT ── */
+.main{max-width:1100px;margin:0 auto;padding:1.5rem 1.2rem}
+
+/* ── TABS ── */
+.tabs{display:flex;gap:.4rem;margin-bottom:1.2rem;background:var(--white);
+  padding:.4rem;border-radius:12px;box-shadow:var(--shadow-sm);width:fit-content}
+.tab{padding:7px 18px;border-radius:9px;border:none;background:transparent;
+  font-size:.85rem;font-weight:500;cursor:pointer;color:var(--gray);font-family:inherit;transition:all .15s}
+.tab.active{background:var(--teal);color:#fff;font-weight:600}
+
+/* ── PANEL PAIs ── */
+.pai-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem}
+.pai-card{background:var(--white);border-radius:var(--r);padding:1.2rem;
+  box-shadow:var(--shadow-sm);border:1.5px solid var(--border);cursor:pointer;
+  transition:all .2s;position:relative;overflow:hidden}
+.pai-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:var(--teal)}
+.pai-card:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--teal)}
+.pai-card-period{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--teal)}
+.pai-card-title{font-family:'DM Serif Display',serif;font-size:1.15rem;color:var(--dark);margin:.2rem 0 .5rem}
+.pai-card-meta{font-size:.78rem;color:var(--gray);display:flex;gap:.8rem;flex-wrap:wrap}
+.pai-card-tags{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.7rem}
+.tag{padding:2px 8px;border-radius:20px;font-size:.7rem;font-weight:600}
+.tag-green{background:var(--green-pale);color:var(--green)}
+.tag-orange{background:var(--orange-pale);color:var(--orange)}
+.tag-red{background:var(--red-pale);color:var(--red)}
+.tag-blue{background:#eff6ff;color:#2563eb}
+.tag-purple{background:var(--purple-pale);color:var(--purple)}
+.tag-teal{background:var(--teal-pale);color:var(--teal2)}
+
+.empty-state{text-align:center;padding:3rem;color:var(--gray)}
+.empty-state .es-icon{font-size:3rem;margin-bottom:.8rem}
+.empty-state h3{font-family:'DM Serif Display',serif;font-size:1.3rem;color:var(--mid);margin-bottom:.4rem}
+
+/* ── MODAL ── */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;
+  align-items:flex-start;justify-content:center;padding:1.5rem;overflow-y:auto}
+.overlay.open{display:flex}
+.modal{background:var(--white);border-radius:20px;width:100%;max-width:780px;
+  box-shadow:0 20px 60px rgba(0,0,0,.2);margin:auto}
+.modal-hdr{background:linear-gradient(135deg,var(--teal),var(--teal2));color:#fff;
+  padding:1.2rem 1.5rem;border-radius:20px 20px 0 0;display:flex;justify-content:space-between;align-items:center}
+.modal-hdr h2{font-family:'DM Serif Display',serif;font-size:1.25rem}
+.modal-hdr .meta{font-size:.75rem;opacity:.7;margin-top:.15rem}
+.modal-close{background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;
+  border-radius:7px;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center}
+.modal-body{padding:1.5rem}
+
+/* ── FORM ── */
+.form-section{margin-bottom:1.4rem}
+.fs-header{display:flex;align-items:center;gap:.6rem;margin-bottom:.8rem;
+  padding-bottom:.5rem;border-bottom:2px solid var(--teal-pale)}
+.fs-icon{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;
+  justify-content:center;font-size:1rem;flex-shrink:0}
+.fs-title{font-weight:700;font-size:.92rem;color:var(--teal2)}
+.fs-sub{font-size:.75rem;color:var(--gray)}
+
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-bottom:.6rem}
+.form-row.full{grid-template-columns:1fr}
+.form-row.triple{grid-template-columns:1fr 1fr 1fr}
+
+.field{display:flex;flex-direction:column;gap:3px}
+.field label{font-size:.75rem;font-weight:600;color:var(--mid)}
+.field input,.field select,.field textarea{
+  padding:8px 10px;border-radius:var(--r-sm);border:1.5px solid var(--border);
+  font-size:.85rem;font-family:inherit;outline:none;transition:border .15s;
+  background:var(--white);color:var(--dark)}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--teal)}
+.field textarea{resize:vertical;min-height:60px;line-height:1.5}
+
+/* ── OBJETIVOS ── */
+.obj-list{display:flex;flex-direction:column;gap:.5rem}
+.obj-item{background:var(--bg);border:1.5px solid var(--border);border-radius:10px;
+  padding:.7rem .9rem;display:grid;grid-template-columns:1fr auto auto;gap:.5rem;align-items:center}
+.obj-item:hover{border-color:var(--teal)}
+.obj-text{font-size:.85rem;color:var(--dark)}
+.obj-area{font-size:.72rem;padding:2px 7px;border-radius:20px;font-weight:600}
+.obj-progress{display:flex;align-items:center;gap:.4rem}
+.progress-bar{width:80px;height:8px;background:var(--border);border-radius:4px;overflow:hidden}
+.progress-fill{height:100%;border-radius:4px;transition:width .3s}
+.obj-btn-del{background:var(--red-pale);color:var(--red);border:none;border-radius:5px;
+  padding:3px 7px;font-size:.75rem;cursor:pointer}
+
+.add-obj-btn{margin-top:.5rem;padding:7px 14px;border-radius:8px;border:1.5px dashed var(--border2);
+  background:transparent;color:var(--gray);font-size:.82rem;cursor:pointer;font-family:inherit;
+  width:100%;transition:all .15s}
+.add-obj-btn:hover{border-color:var(--teal);color:var(--teal);background:var(--teal-pale)}
+
+/* ── ESCALA LIKERT ── */
+.likert{display:flex;gap:.35rem;margin-top:4px}
+.likert-btn{flex:1;padding:5px 4px;border-radius:7px;border:1.5px solid var(--border);
+  background:var(--white);font-size:.75rem;cursor:pointer;text-align:center;
+  transition:all .15s;color:var(--gray);font-family:inherit}
+.likert-btn.sel-1{border-color:var(--red);background:var(--red-pale);color:var(--red);font-weight:700}
+.likert-btn.sel-2{border-color:var(--yellow);background:var(--yellow-pale);color:var(--yellow);font-weight:700}
+.likert-btn.sel-3{border-color:#0891b2;background:#e0f7fa;color:#0891b2;font-weight:700}
+.likert-btn.sel-4{border-color:var(--green);background:var(--green-pale);color:var(--green);font-weight:700}
+
+/* ── RADAR / ÁREAS ── */
+.areas-grid{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+.area-card{background:var(--bg);border-radius:10px;padding:.8rem;border:1.5px solid var(--border)}
+.area-name{font-size:.78rem;font-weight:700;color:var(--mid);margin-bottom:.4rem;display:flex;align-items:center;gap:.3rem}
+.area-val{font-size:1.4rem;font-weight:700;text-align:right}
+
+/* ── SAVE BTN ── */
+.save-bar{position:sticky;bottom:0;background:var(--white);border-top:1px solid var(--border);
+  padding:.9rem 1.5rem;display:flex;justify-content:space-between;align-items:center;
+  border-radius:0 0 20px 20px}
+.save-btn{padding:9px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--teal),var(--teal2));
+  color:#fff;font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .15s}
+.save-btn:hover{opacity:.85}
+.save-msg{font-size:.82rem;color:var(--green);font-weight:600}
+.del-btn{padding:7px 14px;border-radius:8px;border:none;background:var(--red-pale);
+  color:var(--red);font-size:.82rem;cursor:pointer;font-family:inherit}
+
+/* ── DETAIL VIEW ── */
+.pai-detail{background:var(--white);border-radius:var(--r);padding:1.4rem;box-shadow:var(--shadow-sm)}
+.det-section{margin-bottom:1.2rem;padding-bottom:1.2rem;border-bottom:1px solid var(--border)}
+.det-section:last-child{border-bottom:none}
+.det-title{font-weight:700;font-size:.82rem;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--teal);margin-bottom:.6rem}
+.det-text{font-size:.88rem;color:var(--mid);line-height:1.6}
+.det-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.5rem}
+.det-kpi{background:var(--bg);border-radius:9px;padding:.6rem .8rem;text-align:center}
+.det-kpi-val{font-size:1.5rem;font-weight:700;color:var(--teal2)}
+.det-kpi-label{font-size:.7rem;color:var(--gray)}
+
+/* ── LOADING ── */
+.loading{text-align:center;padding:3rem;color:var(--gray)}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--teal);
+  border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 1rem}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+@media(max-width:640px){
+  .form-row{grid-template-columns:1fr}
+  .form-row.triple{grid-template-columns:1fr 1fr}
+  .areas-grid{grid-template-columns:1fr}
+  .pai-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-wrap" id="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">📋</div>
+    <div class="login-title">PAI · Jorge</div>
+    <div class="login-sub">Plan de Atención Individualizada<br>Fundación HÁPTICA</div>
+    <input class="login-input" type="password" id="pwd-input" placeholder="Contraseña" autocomplete="current-password">
+    <button class="login-btn" onclick="doLogin()">Acceder</button>
+    <div class="login-err" id="login-err">Contraseña incorrecta</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="hdr">
+    <div class="hdr-brand">
+      <div class="hdr-icon">📋</div>
+      <div>
+        <div class="hdr-title">PAI · Jorge</div>
+        <div class="hdr-sub">Plan de Atención Individualizada</div>
+      </div>
+    </div>
+    <div class="hdr-right">
+      <button class="hdr-btn" onclick="window.location.href='/dashboard'">← Dashboard</button>
+      <button class="hdr-btn primary" onclick="openNewPAI()">+ Nuevo PAI</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('list')">📋 Todos los PAI</button>
+      <button class="tab" onclick="showTab('activo')">✅ PAI Activo</button>
+      <button class="tab" onclick="showTab('evolucion')">📈 Evolución</button>
+    </div>
+
+    <div id="tab-list">
+      <div class="loading"><div class="spinner"></div>Cargando PAIs...</div>
+    </div>
+    <div id="tab-activo" style="display:none"></div>
+    <div id="tab-evolucion" style="display:none"></div>
+  </div>
+</div>
+
+<!-- MODAL NUEVO/EDITAR PAI -->
+<div class="overlay" id="pai-modal">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div>
+        <div style="font-size:.7rem;opacity:.7">Fundación HÁPTICA · PAI</div>
+        <h2 id="modal-title">Nuevo Plan de Atención Individualizada</h2>
+        <div class="meta" id="modal-meta"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let PWD = localStorage.getItem('pai_pwd') || '';
+let PAIS = [];
+let editingId = null;
+let objectives = [];
+
+// ── AREAS y CONFIG ──────────────────────────────────────────────────────────
+const AREAS = [
+  {key:'comunicacion',     label:'Comunicación',      icon:'💬', color:'#2A7F7F'},
+  {key:'autonomia',        label:'Autonomía personal', icon:'🌟', color:'#16a34a'},
+  {key:'habilidades_soc',  label:'Habilidades sociales',icon:'🤝', color:'#2563eb'},
+  {key:'motricidad',       label:'Motricidad',         icon:'🏃', color:'#7c3aed'},
+  {key:'cognitivo',        label:'Cognitivo / Sensorial',icon:'🧠',color:'#d97706'},
+  {key:'bienestar',        label:'Bienestar emocional', icon:'😊', color:'#E8833A'},
+];
+
+const AREA_OPTS = AREAS.map(a=>`<option value="${a.key}">${a.icon} ${a.label}</option>`).join('');
+
+const PROGRESS_COLORS = {
+  1:'#dc2626', 2:'#d97706', 3:'#0891b2', 4:'#16a34a'
+};
+const PROGRESS_LABELS = {
+  1:'No iniciado', 2:'En proceso', 3:'Conseguido', 4:'Consolidado'
+};
+
+// ── LOGIN ────────────────────────────────────────────────────────────────────
+document.getElementById('pwd-input').addEventListener('keydown', e=>e.key==='Enter'&&doLogin());
+
+async function doLogin(){
+  const pwd = document.getElementById('pwd-input').value.trim();
+  try {
+    const r = await fetch(`${API}/api/ping?pwd=${encodeURIComponent(pwd)}`);
+    const d = await r.json();
+    if (d.status === 'ok') {
+      PWD = pwd;
+      localStorage.setItem('pai_pwd', pwd);
+      document.getElementById('login-wrap').style.display='none';
+      document.getElementById('app').style.display='block';
+      loadPAIs();
+    } else throw new Error();
+  } catch {
+    document.getElementById('login-err').style.display='block';
+  }
+}
+
+if (PWD) {
+  document.getElementById('login-wrap').style.display='none';
+  document.getElementById('app').style.display='block';
+  loadPAIs();
+}
+
+function apiFetch(path, opts={}){
+  if(!opts.headers) opts.headers={};
+  opts.headers['X-Password'] = PWD;
+  return fetch(API+path, opts);
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function showTab(t){
+  ['list','activo','evolucion'].forEach(id=>{
+    document.getElementById('tab-'+id).style.display = id===t?'block':'none';
+  });
+  document.querySelectorAll('.tab').forEach((btn,i)=>{
+    btn.classList.toggle('active', ['list','activo','evolucion'][i]===t);
+  });
+  if(t==='evolucion') renderEvolucion();
+  if(t==='activo') renderActivo();
+}
+
+// ── LOAD PAIs ─────────────────────────────────────────────────────────────────
+async function loadPAIs(){
+  try {
+    const r = await apiFetch('/api/pai');
+    const d = await r.json();
+    PAIS = d.pais || [];
+    renderList();
+    renderActivo();
+  } catch(e){
+    document.getElementById('tab-list').innerHTML=
+      `<div class="empty-state"><div class="es-icon">⚠️</div><h3>Error al cargar</h3><p>${e.message}</p></div>`;
+  }
+}
+
+// ── RENDER LIST ───────────────────────────────────────────────────────────────
+function renderList(){
+  const el = document.getElementById('tab-list');
+  if(!PAIS.length){
+    el.innerHTML=`<div class="empty-state">
+      <div class="es-icon">📋</div>
+      <h3>Sin PAIs todavía</h3>
+      <p style="font-size:.85rem;color:var(--gray)">Crea el primer Plan de Atención Individualizada para Jorge.</p>
+      <button onclick="openNewPAI()" style="margin-top:1rem;padding:9px 20px;border-radius:9px;border:none;
+        background:var(--teal);color:#fff;font-size:.88rem;font-weight:600;cursor:pointer">+ Crear primer PAI</button>
+    </div>`;
+    return;
+  }
+  const sorted = [...PAIS].sort((a,b)=>b.periodo_inicio.localeCompare(a.periodo_inicio));
+  el.innerHTML=`<div class="pai-grid">${sorted.map(pai=>paiCard(pai)).join('')}</div>`;
+}
+
+function paiCard(pai){
+  const areas_score = AREAS.map(a=>{
+    const v = pai.areas_score?.[a.key]||0;
+    return v > 0 ? `<span class="tag" style="background:${a.color}22;color:${a.color}">${a.icon} ${v}/4</span>` : '';
+  }).filter(Boolean).join('');
+  const n_obj = (pai.objetivos||[]).length;
+  const obj_ok = (pai.objetivos||[]).filter(o=>o.progreso>=3).length;
+  const status_color = pai.estado==='activo'?'tag-green':pai.estado==='borrador'?'tag-orange':'tag-blue';
+  return `
+    <div class="pai-card" onclick="openViewPAI('${pai.id}')">
+      <div class="pai-card-period">${formatPeriod(pai.periodo_inicio)} — ${formatPeriod(pai.periodo_fin)}</div>
+      <div class="pai-card-title">PAI · ${pai.trimestre||''}</div>
+      <div class="pai-card-meta">
+        <span>👤 ${pai.profesional_responsable||'—'}</span>
+        <span>🎯 ${obj_ok}/${n_obj} objetivos</span>
+      </div>
+      <div class="pai-card-tags">
+        <span class="tag ${status_color}">${pai.estado||'borrador'}</span>
+        ${areas_score}
+      </div>
+    </div>`;
+}
+
+function formatPeriod(d){
+  if(!d) return '—';
+  const [y,m] = d.split('-');
+  const months = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  return `${months[parseInt(m)]} ${y}`;
+}
+
+// ── RENDER ACTIVO ─────────────────────────────────────────────────────────────
+function renderActivo(){
+  const el = document.getElementById('tab-activo');
+  const activo = PAIS.find(p=>p.estado==='activo');
+  if(!activo){
+    el.innerHTML=`<div class="empty-state">
+      <div class="es-icon">✅</div><h3>Sin PAI activo</h3>
+      <p style="font-size:.85rem;color:var(--gray)">Crea un nuevo PAI y márcalo como activo.</p>
+    </div>`;
+    return;
+  }
+  el.innerHTML=`<div class="pai-detail">${renderDetail(activo)}</div>`;
+}
+
+function renderDetail(pai){
+  const obj_html = (pai.objetivos||[]).map(o=>`
+    <div style="display:flex;align-items:flex-start;gap:.7rem;padding:.6rem .8rem;background:var(--bg);
+         border-radius:9px;margin-bottom:.4rem;border-left:3px solid ${PROGRESS_COLORS[o.progreso]||'#e5e7eb'}">
+      <div style="flex:1">
+        <div style="font-size:.85rem;font-weight:600;color:var(--dark)">${o.objetivo}</div>
+        <div style="font-size:.75rem;color:var(--gray);margin-top:2px">${o.area_label||''} · ${o.estrategia||''}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <span class="tag" style="background:${PROGRESS_COLORS[o.progreso]||'#e5e7eb'}22;color:${PROGRESS_COLORS[o.progreso]||'#999'}">
+          ${PROGRESS_LABELS[o.progreso]||'—'}
+        </span>
+      </div>
+    </div>`).join('');
+
+  const areas_html = AREAS.map(a=>{
+    const v = pai.areas_score?.[a.key]||0;
+    if(!v) return '';
+    const pct = v/4*100;
+    return `<div class="det-kpi" style="border-left:3px solid ${a.color}">
+      <div style="font-size:.75rem;font-weight:700;color:${a.color};margin-bottom:.3rem">${a.icon} ${a.label}</div>
+      <div style="background:var(--border);border-radius:4px;height:8px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${a.color};border-radius:4px"></div>
+      </div>
+      <div style="font-size:.72rem;color:var(--gray);margin-top:3px">${PROGRESS_LABELS[v]||'—'}</div>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.2rem;flex-wrap:wrap;gap:.5rem">
+      <div>
+        <div style="font-size:.75rem;font-weight:700;color:var(--teal);text-transform:uppercase">PAI ACTIVO</div>
+        <h2 style="font-family:'DM Serif Display',serif;font-size:1.4rem;color:var(--dark)">${pai.trimestre||'Sin título'}</h2>
+        <div style="font-size:.82rem;color:var(--gray)">${formatPeriod(pai.periodo_inicio)} — ${formatPeriod(pai.periodo_fin)} · ${pai.profesional_responsable||'—'}</div>
+      </div>
+      <button onclick="openEditPAI('${pai.id}')" class="hdr-btn" style="background:var(--teal-pale);color:var(--teal2);border-color:var(--teal)">✏️ Editar</button>
+    </div>
+    ${pai.contexto_actual?`<div class="det-section"><div class="det-title">Contexto actual</div><div class="det-text">${pai.contexto_actual}</div></div>`:''}
+    <div class="det-section"><div class="det-title">🎯 Objetivos (${(pai.objetivos||[]).length})</div>${obj_html||'<p style="color:var(--gray);font-size:.85rem">Sin objetivos definidos.</p>'}</div>
+    <div class="det-section"><div class="det-title">📊 Valoración por áreas</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.5rem">${areas_html}</div></div>
+    ${pai.logros?`<div class="det-section"><div class="det-title">✅ Logros del período</div><div class="det-text">${pai.logros}</div></div>`:''}
+    ${pai.dificultades?`<div class="det-section"><div class="det-title">⚠️ Dificultades</div><div class="det-text">${pai.dificultades}</div></div>`:''}
+    ${pai.propuesta_siguiente?`<div class="det-section"><div class="det-title">➡️ Propuesta siguiente período</div><div class="det-text">${pai.propuesta_siguiente}</div></div>`:''}
+    ${pai.observaciones_familia?`<div class="det-section"><div class="det-title">👨‍👩‍👦 Observaciones familia</div><div class="det-text">${pai.observaciones_familia}</div></div>`:''}
+  `;
+}
+
+// ── EVOLUCIÓN ─────────────────────────────────────────────────────────────────
+function renderEvolucion(){
+  const el = document.getElementById('tab-evolucion');
+  if(PAIS.length < 2){
+    el.innerHTML=`<div class="empty-state"><div class="es-icon">📈</div>
+      <h3>Necesitas al menos 2 PAIs</h3><p style="font-size:.85rem;color:var(--gray)">La evolución se mostrará cuando haya más de un PAI completado.</p></div>`;
+    return;
+  }
+  const sorted = [...PAIS].filter(p=>p.estado!=='borrador').sort((a,b)=>a.periodo_inicio.localeCompare(b.periodo_inicio));
+  const rows = sorted.map(p=>{
+    const obj_ok = (p.objetivos||[]).filter(o=>o.progreso>=3).length;
+    const obj_tot = (p.objetivos||[]).length;
+    const pct = obj_tot ? Math.round(obj_ok/obj_tot*100) : 0;
+    const area_avg = AREAS.reduce((s,a)=>s+(p.areas_score?.[a.key]||0),0)/AREAS.length;
+    return `<tr>
+      <td style="font-size:.82rem;font-weight:600;color:var(--teal2)">${formatPeriod(p.periodo_inicio)}</td>
+      <td style="font-size:.82rem">${p.trimestre||'—'}</td>
+      <td style="font-size:.82rem">${p.profesional_responsable||'—'}</td>
+      <td style="text-align:center">
+        <div style="display:flex;align-items:center;gap:.4rem;justify-content:center">
+          <div style="width:60px;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${pct>=75?'var(--green)':pct>=50?'#0891b2':'var(--orange)'};border-radius:4px"></div>
+          </div>
+          <span style="font-size:.78rem;color:var(--gray)">${obj_ok}/${obj_tot}</span>
+        </div>
+      </td>
+      <td style="text-align:center;font-size:.82rem;font-weight:700;color:var(--teal)">${area_avg.toFixed(1)}/4</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML=`
+    <div class="pai-detail">
+      <h3 style="font-family:'DM Serif Display',serif;font-size:1.2rem;margin-bottom:1rem;color:var(--dark)">Evolución entre períodos</h3>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:var(--teal-pale)">
+          <th style="padding:8px 12px;text-align:left;font-size:.78rem;color:var(--teal2)">Período</th>
+          <th style="padding:8px 12px;text-align:left;font-size:.78rem;color:var(--teal2)">Trimestre</th>
+          <th style="padding:8px 12px;text-align:left;font-size:.78rem;color:var(--teal2)">Responsable</th>
+          <th style="padding:8px 12px;text-align:center;font-size:.78rem;color:var(--teal2)">Objetivos</th>
+          <th style="padding:8px 12px;text-align:center;font-size:.78rem;color:var(--teal2)">Media áreas</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ── FORMULARIO NUEVO/EDITAR ───────────────────────────────────────────────────
+function openNewPAI(){
+  editingId = null;
+  objectives = [
+    {id: Date.now()+'_1', objetivo:'Mantener y ampliar el vocabulario funcional en SAAC', area:'comunicacion', estrategia:'Sesiones diarias de 20 min con tablero de comunicación', progreso:2},
+    {id: Date.now()+'_2', objetivo:'Reducir episodios de autoagresión mediante protocolo de anticipación', area:'bienestar', estrategia:'Comunicar cambios de rutina con antelación usando objetos de referencia', progreso:2},
+    {id: Date.now()+'_3', objetivo:'Mejorar la autonomía en hábitos de higiene', area:'autonomia', estrategia:'Secuencia visual paso a paso en baño, refuerzo positivo', progreso:1},
+  ];
+  document.getElementById('modal-title').textContent = 'Nuevo PAI';
+  document.getElementById('modal-meta').textContent = '';
+  document.getElementById('modal-body').innerHTML = buildForm(null);
+  document.getElementById('pai-modal').classList.add('open');
+  renderObjList();
+}
+
+function openEditPAI(id){
+  const pai = PAIS.find(p=>p.id===id); if(!pai) return;
+  editingId = id;
+  objectives = JSON.parse(JSON.stringify(pai.objetivos||[]));
+  document.getElementById('modal-title').textContent = 'Editar PAI';
+  document.getElementById('modal-meta').textContent = `${formatPeriod(pai.periodo_inicio)} — ${formatPeriod(pai.periodo_fin)}`;
+  document.getElementById('modal-body').innerHTML = buildForm(pai);
+  document.getElementById('pai-modal').classList.add('open');
+  renderObjList();
+}
+
+function openViewPAI(id){
+  const pai = PAIS.find(p=>p.id===id); if(!pai) return;
+  document.getElementById('modal-title').textContent = pai.trimestre||'PAI';
+  document.getElementById('modal-meta').textContent = `${formatPeriod(pai.periodo_inicio)} — ${formatPeriod(pai.periodo_fin)}`;
+  document.getElementById('modal-body').innerHTML = `
+    <div style="padding-bottom:.5rem">${renderDetail(pai)}</div>
+    <div class="save-bar">
+      <button class="del-btn" onclick="deletePAI('${pai.id}')">🗑 Eliminar</button>
+      <button class="save-btn" onclick="openEditPAI('${pai.id}')">✏️ Editar este PAI</button>
+    </div>`;
+  document.getElementById('pai-modal').classList.add('open');
+}
+
+function closeModal(){
+  document.getElementById('pai-modal').classList.remove('open');
+}
+
+function buildForm(pai){
+  const v = (k,def='') => pai?.[k]??def;
+  const areaScores = AREAS.map(a=>`
+    <div class="area-card">
+      <div class="area-name" style="color:${a.color}">${a.icon} ${a.label}</div>
+      <div class="likert" id="likert-${a.key}">
+        ${[1,2,3,4].map(n=>`<button class="likert-btn ${(v('areas_score',{})[a.key]||0)==n?'sel-'+n:''}"
+          onclick="setLikert('${a.key}',${n},this)">${n}</button>`).join('')}
+      </div>
+      <div style="font-size:.68rem;color:var(--gray);display:flex;justify-content:space-between;margin-top:3px">
+        <span>No iniciado</span><span>Consolidado</span>
+      </div>
+    </div>`).join('');
+
+  return `
+    <!-- BLOQUE 1: Datos generales -->
+    <div class="form-section">
+      <div class="fs-header">
+        <div class="fs-icon" style="background:#e8f4f4">📅</div>
+        <div><div class="fs-title">Datos generales</div><div class="fs-sub">Período y responsables del PAI</div></div>
+      </div>
+      <div class="form-row triple">
+        <div class="field"><label>Período inicio</label><input type="month" id="f-inicio" value="${v('periodo_inicio','').slice(0,7)}"></div>
+        <div class="field"><label>Período fin</label><input type="month" id="f-fin" value="${v('periodo_fin','').slice(0,7)}"></div>
+        <div class="field"><label>Estado</label>
+          <select id="f-estado">
+            <option value="borrador" ${v('estado')==='borrador'?'selected':''}>📝 Borrador</option>
+            <option value="activo" ${v('estado')==='activo'?'selected':''}>✅ Activo</option>
+            <option value="completado" ${v('estado')==='completado'?'selected':''}>📦 Completado</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Trimestre / Denominación</label><input type="text" id="f-trimestre" value="${v('trimestre')}" placeholder="ej: 1er Trimestre 2025"></div>
+        <div class="field"><label>Profesional responsable</label><input type="text" id="f-responsable" value="${v('profesional_responsable')}" placeholder="Nombre del profesional"></div>
+      </div>
+      <div class="form-row full">
+        <div class="field"><label>Profesionales participantes</label>
+          <input type="text" id="f-participantes" value="${v('profesionales_participantes')}" placeholder="ej: Fisioterapeuta, Psicólogo, Mediadores..."></div>
+      </div>
+    </div>
+
+    <!-- BLOQUE 2: Contexto -->
+    <div class="form-section">
+      <div class="fs-header">
+        <div class="fs-icon" style="background:#f0fdf4">🌍</div>
+        <div><div class="fs-title">Contexto actual de Jorge</div><div class="fs-sub">Situación general al inicio del período</div></div>
+      </div>
+      <div class="form-row full">
+        <div class="field"><label>Descripción del contexto</label>
+          <textarea id="f-contexto" rows="3" placeholder="Estado general, situación familiar, cambios recientes, medicación actual...">${v('contexto_actual')}</textarea></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Fortalezas identificadas</label>
+          <textarea id="f-fortalezas" rows="2" placeholder="Capacidades, recursos y apoyos con los que cuenta...">${v('fortalezas')}</textarea></div>
+        <div class="field"><label>Necesidades prioritarias</label>
+          <textarea id="f-necesidades" rows="2" placeholder="Áreas que requieren mayor atención en este período...">${v('necesidades')}</textarea></div>
+      </div>
+    </div>
+
+    <!-- BLOQUE 3: Objetivos -->
+    <div class="form-section">
+      <div class="fs-header">
+        <div class="fs-icon" style="background:#eff6ff">🎯</div>
+        <div><div class="fs-title">Objetivos del período</div><div class="fs-sub">Metas específicas, medibles y con estrategia de intervención</div></div>
+      </div>
+      <div id="obj-list" class="obj-list"></div>
+      <button class="add-obj-btn" onclick="addObjective()">+ Añadir objetivo</button>
+    </div>
+
+    <!-- BLOQUE 4: Valoración por áreas -->
+    <div class="form-section">
+      <div class="fs-header">
+        <div class="fs-icon" style="background:#fef4ec">📊</div>
+        <div><div class="fs-title">Valoración por áreas</div><div class="fs-sub">1=No iniciado · 2=En proceso · 3=Conseguido · 4=Consolidado</div></div>
+      </div>
+      <div class="areas-grid">${areaScores}</div>
+    </div>
+
+    <!-- BLOQUE 5: Evaluación y cierre -->
+    <div class="form-section">
+      <div class="fs-header">
+        <div class="fs-icon" style="background:#f0fdf4">✅</div>
+        <div><div class="fs-title">Evaluación del período</div><div class="fs-sub">Logros, dificultades y propuestas</div></div>
+      </div>
+      <div class="form-row full">
+        <div class="field"><label>Logros y avances destacados</label>
+          <textarea id="f-logros" rows="3" placeholder="Qué ha funcionado bien, avances concretos, momentos positivos...">${v('logros')}</textarea></div>
+      </div>
+      <div class="form-row full">
+        <div class="field"><label>Dificultades y retos</label>
+          <textarea id="f-dificultades" rows="3" placeholder="Qué no ha funcionado, momentos difíciles, factores que interfieren...">${v('dificultades')}</textarea></div>
+      </div>
+      <div class="form-row full">
+        <div class="field"><label>Propuesta para el siguiente período</label>
+          <textarea id="f-propuesta" rows="3" placeholder="Nuevos objetivos, cambios de estrategia, recursos necesarios...">${v('propuesta_siguiente')}</textarea></div>
+      </div>
+    </div>
+
+    <!-- BLOQUE 6: Familia -->
+    <div class="form-section">
+      <div class="fs-header">
+        <div class="fs-icon" style="background:#fef4ec">👨‍👩‍👦</div>
+        <div><div class="fs-title">Coordinación con familia</div></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>Fecha reunión con familia</label>
+          <input type="date" id="f-reunion" value="${v('fecha_reunion_familia')}"></div>
+        <div class="field"><label>Personas presentes</label>
+          <input type="text" id="f-familia-presentes" value="${v('familia_presentes')}" placeholder="ej: Madre, padre, trabajadora social..."></div>
+      </div>
+      <div class="form-row full">
+        <div class="field"><label>Observaciones y acuerdos con la familia</label>
+          <textarea id="f-familia" rows="3" placeholder="Qué se ha hablado con la familia, acuerdos tomados, observaciones desde casa...">${v('observaciones_familia')}</textarea></div>
+      </div>
+    </div>
+
+    <div class="save-bar">
+      ${editingId?`<button class="del-btn" onclick="deletePAI('${editingId}')">🗑 Eliminar</button>`:'<div></div>'}
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <span class="save-msg" id="save-msg"></span>
+        <button class="save-btn" onclick="savePAI()">💾 Guardar PAI</button>
+      </div>
+    </div>`;
+}
+
+// ── OBJETIVOS ─────────────────────────────────────────────────────────────────
+function renderObjList(){
+  const el = document.getElementById('obj-list'); if(!el) return;
+  if(!objectives.length){
+    el.innerHTML='<p style="font-size:.82rem;color:var(--gray);padding:.3rem">Sin objetivos todavía.</p>';
+    return;
+  }
+  el.innerHTML = objectives.map((o,i)=>`
+    <div class="obj-item" id="obj-${o.id}">
+      <div>
+        <input value="${o.objetivo||''}" onchange="objectives[${i}].objetivo=this.value"
+          style="width:100%;border:none;background:transparent;font-size:.85rem;font-weight:600;color:var(--dark);font-family:inherit;outline:none;margin-bottom:3px"
+          placeholder="Descripción del objetivo...">
+        <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+          <select onchange="objectives[${i}].area=this.value" style="border:none;background:transparent;font-size:.73rem;color:var(--gray);font-family:inherit;cursor:pointer">
+            ${AREAS.map(a=>`<option value="${a.key}" ${o.area===a.key?'selected':''}>${a.icon} ${a.label}</option>`).join('')}
+          </select>
+          <input value="${o.estrategia||''}" onchange="objectives[${i}].estrategia=this.value"
+            placeholder="Estrategia de intervención..."
+            style="flex:1;min-width:140px;border:none;border-bottom:1px dashed var(--border2);background:transparent;font-size:.75rem;color:var(--gray);font-family:inherit;outline:none;padding:1px 2px">
+        </div>
+      </div>
+      <div class="obj-progress">
+        <select onchange="objectives[${i}].progreso=parseInt(this.value)"
+          style="border:1.5px solid ${PROGRESS_COLORS[o.progreso]||'#e5e7eb'};border-radius:7px;
+                 background:${PROGRESS_COLORS[o.progreso]||'#e5e7eb'}22;color:${PROGRESS_COLORS[o.progreso]||'#666'};
+                 font-size:.75rem;font-family:inherit;padding:3px 6px;cursor:pointer;font-weight:600">
+          ${[1,2,3,4].map(n=>`<option value="${n}" ${o.progreso===n?'selected':''}>${n} ${PROGRESS_LABELS[n]}</option>`).join('')}
+        </select>
+      </div>
+      <button class="obj-btn-del" onclick="removeObjective('${o.id}')">✕</button>
+    </div>`).join('');
+}
+
+function addObjective(){
+  objectives.push({id: Date.now()+'', objetivo:'', area:'comunicacion', estrategia:'', progreso:1});
+  renderObjList();
+  // Focus último input
+  setTimeout(()=>document.querySelector('#obj-list .obj-item:last-child input')?.focus(),50);
+}
+
+function removeObjective(id){
+  objectives = objectives.filter(o=>o.id!==id);
+  renderObjList();
+}
+
+function setLikert(area, val, btn){
+  btn.closest('.likert').querySelectorAll('.likert-btn').forEach((b,i)=>{
+    b.className='likert-btn'+(i+1===val?' sel-'+val:'');
+  });
+}
+
+function getLikertValues(){
+  const scores = {};
+  AREAS.forEach(a=>{
+    const likert = document.getElementById('likert-'+a.key);
+    if(!likert) return;
+    const sel = [...likert.querySelectorAll('.likert-btn')].find(b=>b.className.includes('sel-'));
+    scores[a.key] = sel ? parseInt(sel.textContent) : 0;
+  });
+  return scores;
+}
+
+// ── SAVE ─────────────────────────────────────────────────────────────────────
+async function savePAI(){
+  const g = id => document.getElementById(id)?.value||'';
+  const pai = {
+    periodo_inicio:   g('f-inicio')+'-01',
+    periodo_fin:      g('f-fin')+'-28',
+    trimestre:        g('f-trimestre'),
+    estado:           g('f-estado'),
+    profesional_responsable: g('f-responsable'),
+    profesionales_participantes: g('f-participantes'),
+    contexto_actual:  g('f-contexto'),
+    fortalezas:       g('f-fortalezas'),
+    necesidades:      g('f-necesidades'),
+    objetivos:        objectives,
+    areas_score:      getLikertValues(),
+    logros:           g('f-logros'),
+    dificultades:     g('f-dificultades'),
+    propuesta_siguiente: g('f-propuesta'),
+    fecha_reunion_familia: g('f-reunion'),
+    familia_presentes: g('f-familia-presentes'),
+    observaciones_familia: g('f-familia'),
+  };
+  if(editingId) pai.id = editingId;
+
+  const msg = document.getElementById('save-msg');
+  msg.textContent='Guardando...'; msg.style.color='var(--gray)';
+
+  try{
+    const r = await apiFetch('/api/pai', {
+      method: 'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(pai)
+    });
+    const d = await r.json();
+    if(d.ok){
+      msg.textContent='✅ Guardado'; msg.style.color='var(--green)';
+      await loadPAIs();
+      setTimeout(()=>closeModal(), 1000);
+    } else {
+      msg.textContent='Error: '+(d.error||'desconocido'); msg.style.color='var(--red)';
+    }
+  } catch(e){
+    msg.textContent='Error de conexión'; msg.style.color='var(--red)';
+  }
+}
+
+async function deletePAI(id){
+  if(!confirm('¿Eliminar este PAI? Esta acción no se puede deshacer.')) return;
+  await apiFetch(`/api/pai/${id}`, {method:'DELETE'});
+  await loadPAIs();
+  closeModal();
+}
+</script>
+</body>
+</html>

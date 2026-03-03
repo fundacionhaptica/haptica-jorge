@@ -412,3 +412,111 @@ def seed():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
+
+# ── PAI (Plan de Atención Individualizada) ────────────────────────────────────
+def init_pai_table():
+    try:
+        db = psycopg2.connect(DATABASE_URL)
+        cur = db.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS pai (
+                id TEXT PRIMARY KEY,
+                periodo_inicio DATE,
+                periodo_fin DATE,
+                trimestre TEXT DEFAULT '',
+                estado TEXT DEFAULT 'borrador',
+                profesional_responsable TEXT DEFAULT '',
+                profesionales_participantes TEXT DEFAULT '',
+                contexto_actual TEXT DEFAULT '',
+                fortalezas TEXT DEFAULT '',
+                necesidades TEXT DEFAULT '',
+                objetivos JSONB DEFAULT '[]',
+                areas_score JSONB DEFAULT '{}',
+                logros TEXT DEFAULT '',
+                dificultades TEXT DEFAULT '',
+                propuesta_siguiente TEXT DEFAULT '',
+                fecha_reunion_familia DATE,
+                familia_presentes TEXT DEFAULT '',
+                observaciones_familia TEXT DEFAULT '',
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            );
+        """)
+        db.commit(); cur.close(); db.close()
+    except Exception as e:
+        print(f"init_pai error: {e}")
+
+@app.route('/pai')
+@app.route('/pai/')
+def pai_frontend():
+    return send_file('pai.html')
+
+@app.route('/api/pai', methods=['GET'])
+@require_auth
+def get_pai():
+    init_pai_table()
+    db = get_db(); cur = db.cursor()
+    cur.execute('SELECT * FROM pai ORDER BY periodo_inicio DESC NULLS LAST')
+    rows = []
+    for r in cur.fetchall():
+        d = dict(r)
+        for k in ['periodo_inicio','periodo_fin','fecha_reunion_familia','created_at','updated_at']:
+            if d.get(k): d[k] = d[k].isoformat() if hasattr(d[k],'isoformat') else d[k]
+        for k in ['objetivos','areas_score']:
+            if isinstance(d.get(k), str):
+                try: d[k] = json.loads(d[k])
+                except: d[k] = [] if k=='objetivos' else {}
+        rows.append(d)
+    return jsonify({'pais': rows})
+
+@app.route('/api/pai', methods=['POST'])
+@require_auth
+def save_pai():
+    init_pai_table()
+    data = request.get_json()
+    db = get_db(); cur = db.cursor()
+    pai_id = data.get('id') or f"pai_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    cur.execute("""
+        INSERT INTO pai (id,periodo_inicio,periodo_fin,trimestre,estado,
+            profesional_responsable,profesionales_participantes,contexto_actual,
+            fortalezas,necesidades,objetivos,areas_score,logros,dificultades,
+            propuesta_siguiente,fecha_reunion_familia,familia_presentes,
+            observaciones_familia,updated_at)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+        ON CONFLICT (id) DO UPDATE SET
+            periodo_inicio=EXCLUDED.periodo_inicio,periodo_fin=EXCLUDED.periodo_fin,
+            trimestre=EXCLUDED.trimestre,estado=EXCLUDED.estado,
+            profesional_responsable=EXCLUDED.profesional_responsable,
+            profesionales_participantes=EXCLUDED.profesionales_participantes,
+            contexto_actual=EXCLUDED.contexto_actual,fortalezas=EXCLUDED.fortalezas,
+            necesidades=EXCLUDED.necesidades,objetivos=EXCLUDED.objetivos,
+            areas_score=EXCLUDED.areas_score,logros=EXCLUDED.logros,
+            dificultades=EXCLUDED.dificultades,propuesta_siguiente=EXCLUDED.propuesta_siguiente,
+            fecha_reunion_familia=EXCLUDED.fecha_reunion_familia,
+            familia_presentes=EXCLUDED.familia_presentes,
+            observaciones_familia=EXCLUDED.observaciones_familia,
+            updated_at=NOW()
+    """, (
+        pai_id,
+        data.get('periodo_inicio') or None, data.get('periodo_fin') or None,
+        data.get('trimestre',''), data.get('estado','borrador'),
+        data.get('profesional_responsable',''), data.get('profesionales_participantes',''),
+        data.get('contexto_actual',''), data.get('fortalezas',''), data.get('necesidades',''),
+        json.dumps(data.get('objetivos',[]), ensure_ascii=False),
+        json.dumps(data.get('areas_score',{}), ensure_ascii=False),
+        data.get('logros',''), data.get('dificultades',''), data.get('propuesta_siguiente',''),
+        data.get('fecha_reunion_familia') or None,
+        data.get('familia_presentes',''), data.get('observaciones_familia','')
+    ))
+    db.commit()
+    return jsonify({'ok': True, 'id': pai_id})
+
+@app.route('/api/pai/<pai_id>', methods=['DELETE'])
+@require_auth
+def delete_pai(pai_id):
+    init_pai_table()
+    db = get_db(); cur = db.cursor()
+    cur.execute('DELETE FROM pai WHERE id=%s', (pai_id,))
+    db.commit()
+    return jsonify({'ok': True})
