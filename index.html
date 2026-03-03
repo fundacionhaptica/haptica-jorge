@@ -740,8 +740,14 @@ function handleUpload(file) {
   formData.append('file', file);
   setProgress(50,'Procesando...');
   fetch(API_URL+'/api/upload', {method:'POST',headers:{'X-Password':API_PWD},body:formData})
-    .then(function(r){setProgress(90,'Finalizando...');return r.json();})
-    .then(function(d){
+    .then(function(r){
+      setProgress(90,'Finalizando...');
+      if(!r.ok && r.status !== 200) throw new Error('HTTP '+r.status);
+      return r.text();
+    })
+    .then(function(txt){
+      var d;
+      try { d = JSON.parse(txt); } catch(e) { throw new Error('Respuesta no válida: '+txt.slice(0,80)); }
       setProgress(100,'Listo');
       var res=document.getElementById('upload-result');
       res.style.display='block'; res.classList.toggle('error',!d.ok);
