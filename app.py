@@ -280,14 +280,19 @@ def upload():
                  r['formato'], r['body_preview']))
             if cur.rowcount > 0: inserted += 1
             else: duplicates += 1
-        except: db.rollback()
+        except Exception as e:
+            db.rollback()
+            if inserted == 0 and duplicates == 0:
+                first_error = str(e)
+                print(f"INSERT error: {e} | row: {r.get('date')} {r.get('mediator')}")
     dates = sorted(r['date'] for r in reports)
     try:
         cur.execute("INSERT INTO upload_log (total_in_file,new_inserted,duplicates,date_from,date_to) VALUES (%s,%s,%s,%s,%s)",
                     (len(reports), inserted, duplicates, dates[0], dates[-1]))
     except: pass
     db.commit()
-    return jsonify({'ok': True, 'total_in_file': len(reports), 'new_inserted': inserted,
+    err_info = locals().get('first_error','')
+    return jsonify({'ok': True, 'total_in_file': len(reports), 'new_inserted': inserted, 'first_error': err_info,
                     'duplicates': duplicates, 'date_from': dates[0], 'date_to': dates[-1]})
 
 
