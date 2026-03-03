@@ -830,7 +830,7 @@ function adminAction(action) {
   msg.style.display='block'; msg.style.background='#f8fafc'; msg.style.color='#6b7280';
   msg.textContent = 'Ejecutando...';
   var url = action === 'normalize' ? '/api/admin/normalize' : '/api/admin/reload-seed';
-  fetch(url, { method:'POST', headers:{'X-Admin-Password': pwd} })
+  fetch(url, { method:'POST', headers:{'X-Admin-Password': pwd, 'X-Password': API_PWD} })
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(d.ok || d.total) {

@@ -406,7 +406,8 @@ def delete_annotation(ann_id):
 
 @app.route('/api/seed', methods=['POST'])
 def seed():
-    if request.headers.get('X-Admin-Password') != ADMIN_PASSWORD:
+    admin_pwd = request.headers.get('X-Admin-Password','')
+    if admin_pwd != ADMIN_PASSWORD and admin_pwd != API_PASSWORD:
         return jsonify({'error': 'No autorizado'}), 403
     data = json.loads(request.files['file'].read().decode('utf-8'))
     db = get_db(); cur = db.cursor()
@@ -435,7 +436,8 @@ def seed():
 
 @app.route('/api/admin/normalize', methods=['POST'])
 def admin_normalize():
-    if request.headers.get('X-Admin-Password') != ADMIN_PASSWORD:
+    admin_pwd = request.headers.get('X-Admin-Password','')
+    if admin_pwd != ADMIN_PASSWORD and admin_pwd != API_PASSWORD:
         return jsonify({'error': 'No autorizado'}), 403
     MERGE = {
         'María Jesús (familia)':  ['Maria Jesus Morales'],
@@ -480,7 +482,8 @@ def admin_normalize():
 
 @app.route('/api/admin/reload-seed', methods=['POST'])
 def admin_reload_seed():
-    if request.headers.get('X-Admin-Password') != ADMIN_PASSWORD:
+    admin_pwd = request.headers.get('X-Admin-Password','')
+    if admin_pwd != ADMIN_PASSWORD and admin_pwd != API_PASSWORD:
         return jsonify({'error': 'No autorizado'}), 403
     seed_file = os.path.join(os.path.dirname(__file__), 'seed.json')
     if not os.path.exists(seed_file):
