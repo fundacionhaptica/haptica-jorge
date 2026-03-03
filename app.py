@@ -416,6 +416,51 @@ def seed():
     db.commit()
     return jsonify({'ok': True, 'inserted': inserted, 'total': len(data)})
 
+
+@app.route('/api/admin/normalize', methods=['POST'])
+def admin_normalize():
+    if request.headers.get('X-Admin-Password') != ADMIN_PASSWORD:
+        return jsonify({'error': 'No autorizado'}), 403
+    MERGE = {
+        'María Jesús (familia)':  ['Maria Jesus Morales'],
+        'Delia':                  ['Delia Mediadora'],
+        'Ari':                    ['Ari Mediadora'],
+        'Rebeca':                 ['Mediadora Rebeca Burillo'],
+        'Alicia':                 ['Alicia Mediadora'],
+        'Eva Miguel':             ['Mediadora Eva Miguel Mediadora Eva Miguel'],
+        'Ainhoa':                 ['Ainhoa Mediadora'],
+        'María':                  ['Mediadora  Maria', 'Mediadora Maria'],
+        'Leyre':                  ['Leyre Mediadora'],
+        'Irene Buera':            ['Irene Irene Buera'],
+        'Javier':                 ['Javier Cuidador'],
+        'Eli':                    ['Mediador Eli'],
+        'Raúl Blasco':            ['Mediador Raúl Blasco'],
+        'Belén Auqui':            ['Belen Auqui Mediador', 'Belen', 'Belén'],
+        'Carmen (dirección)':     ['Carmen Asensio Gerente', 'Carmen Asensio'],
+        'María (familia)':        ['Maria España'],
+        'Carla':                  ['Carla Mediadora'],
+        'Verónica':               ['Veronica Mediadora'],
+        'Gregory':                ['Greg Mediador', 'gregorioalexander'],
+        'Luna':                   ['Luna Mediadora'],
+        'Alba':                   ['Alba Mediadora'],
+        'Sophie':                 ['Sophie Guerra', 'Mediadora Sofi'],
+        'Elena':                  ['Elena Mediadora'],
+        'Amalia':                 ['Amalia Mediadora'],
+        'Mapi Martínez':          ['Mapi Martinez Clerigué', 'Mapi Martinez'],
+    }
+    db = get_db(); cur = db.cursor()
+    total = 0
+    results = {}
+    for canonical, variants in MERGE.items():
+        count = 0
+        for v in variants:
+            cur.execute("UPDATE reports SET mediator=%s WHERE mediator=%s", (canonical, v))
+            count += cur.rowcount
+        if count: results[canonical] = count
+        total += count
+    db.commit()
+    return jsonify({'ok': True, 'total_updated': total, 'by_mediator': results})
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
