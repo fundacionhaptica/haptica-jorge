@@ -107,7 +107,7 @@ def init_db():
                 notas TEXT DEFAULT '', vocab JSONB DEFAULT '[]',
                 formato TEXT DEFAULT 'v1', body_preview TEXT DEFAULT '',
                 created_at TIMESTAMPTZ DEFAULT NOW(),
-                UNIQUE(date, mediator, turn)
+                UNIQUE(date, mediator, turn, seq)
             );
             CREATE TABLE IF NOT EXISTS upload_log (
                 id SERIAL PRIMARY KEY, uploaded_at TIMESTAMPTZ DEFAULT NOW(),
@@ -126,7 +126,17 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_reports_date ON reports(date);
             CREATE INDEX IF NOT EXISTS idx_reports_mediator ON reports(mediator);
         """)
-        db.commit(); cur.close(); db.close()
+        db.commit()
+        # Migración: añadir seq si no existe y actualizar constraint único
+        try:
+            cur.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS seq INTEGER DEFAULT 1")
+            cur.execute("ALTER TABLE reports DROP CONSTRAINT IF EXISTS reports_date_mediator_turn_key")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS reports_unique_seq ON reports(date,mediator,turn,seq)")
+            db.commit()
+        except Exception as em:
+            db.rollback()
+            print(f"migration: {em}")
+        cur.close(); db.close()
         print("DB lista")
         import threading
         threading.Thread(target=auto_seed, daemon=True).start()
@@ -163,7 +173,7 @@ def auto_seed():
                      banyo,estado,comunicacion,actividades,comidas,medicacion,
                      notas,vocab,formato,body_preview)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (date,mediator,turn) DO NOTHING""",
+                    ON CONFLICT (date,mediator,turn,seq) DO NOTHING""",
                     (r.get('date'), med, r.get('turn','sin especificar'),
                      r.get('mood','?'), r.get('conducta',0), r.get('estiramientos',0),
                      r.get('agua'), r.get('pis'), r.get('banyo',''), r.get('estado',''),
@@ -249,7 +259,7 @@ def upload():
                  banyo,estado,comunicacion,actividades,comidas,medicacion,
                  notas,vocab,formato,body_preview)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (date,mediator,turn) DO NOTHING""",
+                ON CONFLICT (date,mediator,turn,seq) DO NOTHING""",
                 (r['date'], med, r['turn'], r['mood'], r['conducta'],
                  r['estiramientos'], r['agua'], r['pis'], r['banyo'], r['estado'],
                  r['comunicacion'], r['actividades'], r['comidas'], r['medicacion'],
@@ -420,7 +430,7 @@ def seed():
                  banyo,estado,comunicacion,actividades,comidas,medicacion,
                  notas,vocab,formato,body_preview)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (date,mediator,turn) DO NOTHING""",
+                ON CONFLICT (date,mediator,turn,seq) DO NOTHING""",
                 (r.get('date'), med, r.get('turn','sin especificar'),
                  r.get('mood','?'), r.get('conducta',0), r.get('estiramientos',0),
                  r.get('agua'), r.get('pis'), r.get('banyo',''), r.get('estado',''),
@@ -499,16 +509,16 @@ def admin_reload_seed():
         for r in data:
             try:
                 cur.execute("""INSERT INTO reports
-                    (date,mediator,turn,mood,conducta,estiramientos,agua,pis,estado,comunicacion,
+                    (date,mediator,turn,seq,mood,conducta,estiramientos,agua,pis,estado,comunicacion,
                      actividades,comidas,medicacion,notas,vocab,formato,body_preview,banyo)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (date,mediator,turn) DO UPDATE SET
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (date,mediator,turn,seq) DO UPDATE SET
                     mood=EXCLUDED.mood, conducta=EXCLUDED.conducta,
                     agua=EXCLUDED.agua, notas=EXCLUDED.notas,
                     body_preview=EXCLUDED.body_preview""",
                     (r.get('date'), r.get('mediator',''),
-                     r.get('turn','sin especificar'), r.get('mood','?'),
-                     r.get('conducta',0), r.get('estiramientos',0),
+                     r.get('turn','sin especificar'), r.get('seq',1),
+                     r.get('mood','?'), r.get('conducta',0), r.get('estiramientos',0),
                      r.get('agua'), r.get('pis'), r.get('estado',''),
                      r.get('comunicacion',''), r.get('actividades',''),
                      r.get('comidas',''), r.get('medicacion',''),
