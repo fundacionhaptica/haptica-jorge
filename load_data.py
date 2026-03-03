@@ -17,21 +17,31 @@ print(f"Registros actuales: {n}")
 if n > 100:
     print("BD ya tiene datos, nada que hacer"); exit(0)
 
-# Añadir seq si no existe
-try:
-    cur.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS seq INTEGER DEFAULT 1")
+# Añadir seq si no existe — verificar primero
+cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='reports' AND column_name='seq'")
+has_seq = cur.fetchone() is not None
+print(f"Columna seq existe: {has_seq}")
+if not has_seq:
+    cur.execute("ALTER TABLE reports ADD COLUMN seq INTEGER DEFAULT 1")
     db.commit()
-except: db.rollback()
+    print("✅ Columna seq añadida")
 
-# Borrar índice viejo y crear correcto
+# Borrar constraints viejos
+for constraint in ['reports_date_mediator_turn_key', 'reports_date_mediator_turn_seq_key']:
+    try:
+        cur.execute(f"ALTER TABLE reports DROP CONSTRAINT IF EXISTS {constraint}")
+        db.commit()
+    except: db.rollback()
+
+# Crear índice único correcto
 try:
-    cur.execute("ALTER TABLE reports DROP CONSTRAINT IF EXISTS reports_date_mediator_turn_key")
+    cur.execute("DROP INDEX IF EXISTS reports_unique_seq")
+    cur.execute("CREATE UNIQUE INDEX reports_unique_seq ON reports(date,mediator,turn,seq)")
     db.commit()
-except: db.rollback()
-try:
-    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS reports_unique_seq ON reports(date,mediator,turn,seq)")
-    db.commit()
-except: db.rollback()
+    print("✅ Índice único creado")
+except Exception as e:
+    db.rollback()
+    print(f"Índice: {e}")
 
 # Cargar seed
 with open('seed.json', encoding='utf-8') as f:
