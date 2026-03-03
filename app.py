@@ -99,6 +99,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS reports (
                 id SERIAL PRIMARY KEY, date DATE NOT NULL,
                 mediator TEXT NOT NULL, turn TEXT DEFAULT 'sin especificar',
+                seq INTEGER DEFAULT 1,
                 mood TEXT DEFAULT '?', conducta INTEGER DEFAULT 0,
                 estiramientos INTEGER DEFAULT 0, agua INTEGER, pis INTEGER,
                 banyo TEXT DEFAULT '', estado TEXT DEFAULT '',
@@ -106,8 +107,7 @@ def init_db():
                 comidas TEXT DEFAULT '', medicacion TEXT DEFAULT '',
                 notas TEXT DEFAULT '', vocab JSONB DEFAULT '[]',
                 formato TEXT DEFAULT 'v1', body_preview TEXT DEFAULT '',
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                UNIQUE(date, mediator, turn, seq)
+                created_at TIMESTAMPTZ DEFAULT NOW()
             );
             CREATE TABLE IF NOT EXISTS upload_log (
                 id SERIAL PRIMARY KEY, uploaded_at TIMESTAMPTZ DEFAULT NOW(),
@@ -127,15 +127,19 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_reports_mediator ON reports(mediator);
         """)
         db.commit()
-        # Migración: añadir seq si no existe y actualizar constraint único
+        # Migración: añadir seq si no existe y crear índice único correcto
         try:
             cur.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS seq INTEGER DEFAULT 1")
+            db.commit()
+        except: db.rollback()
+        try:
             cur.execute("ALTER TABLE reports DROP CONSTRAINT IF EXISTS reports_date_mediator_turn_key")
+            db.commit()
+        except: db.rollback()
+        try:
             cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS reports_unique_seq ON reports(date,mediator,turn,seq)")
             db.commit()
-        except Exception as em:
-            db.rollback()
-            print(f"migration: {em}")
+        except: db.rollback()
         cur.close(); db.close()
         print("DB lista")
         import threading
