@@ -230,9 +230,11 @@ def upload():
     for r in reports:
         med = normalize_mediator(r['mediator'])
         try:
+            cur.execute("SAVEPOINT sp1")
             cur.execute("SELECT 1 FROM reports WHERE date=%s AND mediator=%s AND body_preview=%s",
                 (r['date'], med, r['body_preview'][:200]))
             if cur.fetchone():
+                cur.execute("RELEASE SAVEPOINT sp1")
                 duplicates += 1
                 continue
             cur.execute("""INSERT INTO reports
@@ -245,9 +247,11 @@ def upload():
                  r['comunicacion'], r['actividades'], r['comidas'], r['medicacion'],
                  r['notas'], json.dumps(r['vocab'], ensure_ascii=False),
                  r['formato'], r['body_preview'][:300]))
+            cur.execute("RELEASE SAVEPOINT sp1")
             inserted += 1
         except Exception as e:
-            db.rollback()
+            cur.execute("ROLLBACK TO SAVEPOINT sp1")
+            cur.execute("RELEASE SAVEPOINT sp1")
             if not first_error:
                 first_error = str(e)
                 print(f"INSERT error: {e} | {r.get('date')} {r.get('mediator')}")
