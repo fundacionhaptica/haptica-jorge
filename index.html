@@ -491,7 +491,8 @@ function updateHeader() {
 // ── TABS ──────────────────────────────────────────────────────────────────────
 function showTab(t) {
   ['overview','list','log','vocab','corr'].forEach(function(id) {
-    document.getElementById('tab-'+id).style.display = id===t ? 'block' : 'none';
+    var el = document.getElementById('tab-'+id);
+    if(el) el.classList.toggle('hidden', id !== t);
   });
   document.querySelectorAll('.tb').forEach(function(btn) {
     btn.classList.toggle('active', btn.dataset.tab === t);
@@ -1058,7 +1059,7 @@ function saveAnnotation() {
   var msg=document.getElementById('ann-msg');
   if(!date||!label){msg.style.color='#dc2626';msg.textContent='Fecha y etiqueta obligatorias.';return;}
   msg.style.color='#6b7280';msg.textContent='Guardando...';
-  apiFetch('/api/annotations',{method:'POST',headers:{'Content-Type':'application/json','X-Password':API_PWD},body:JSON.stringify({date:date,label:label,description:desc,color:color,type:'event'})})
+  apiFetch('/api/annotations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:date,label:label,description:desc,color:color,type:'event'})})
     .then(function(r){return r.json();})
     .then(function(d){
       if(d.ok){
