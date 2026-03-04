@@ -107,6 +107,11 @@ def extract_agua(body: str) -> int | None:
     if m: return int(m.group(1))
     m = re.search(r'#\s*AGUA[:\s]*\*?\s*(\d+)', body, re.I)
     if m: return int(m.group(1))
+    # Patrones en litros: "1l", "1 l", "1litro", "1 litro", "1.5 litros"
+    m = re.search(r'agua[:\s]*(\d+(?:[.,]\d+)?)\s*l(?:itros?)?\b', body, re.I)
+    if m: return round(float(m.group(1).replace(',','.')) * 1000)
+    m = re.search(r'(\d+(?:[.,]\d+)?)\s*l(?:itros?)?\s*(?:de\s*)?agua', body, re.I)
+    if m: return round(float(m.group(1).replace(',','.')) * 1000)
     return None
 
 def extract_pis(body: str) -> int | None:

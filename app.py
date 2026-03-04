@@ -743,6 +743,20 @@ def mediators_summary():
     return jsonify({'mediators': rows})
 
 
+@app.route('/api/admin/fix-raul-agua', methods=['POST'])
+def fix_raul_agua():
+    pwd = request.headers.get('X-Admin-Password','')
+    if pwd != os.environ.get('ADMIN_PASSWORD','haptica_admin_2025'):
+        return jsonify({'error':'No autorizado'}), 401
+    db = get_db(); cur = db.cursor()
+    cur.execute("""UPDATE reports SET agua=1000
+        WHERE agua=1 AND LOWER(mediator) LIKE '%raul%'
+        OR agua=1 AND mediator='Raúl Blasco'""")
+    updated = cur.rowcount
+    db.commit()
+    return jsonify({'ok': True, 'updated': updated})
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
