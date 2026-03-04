@@ -237,24 +237,27 @@ def upload():
     for r in reports:
         med = normalize_mediator(r['mediator'])
         try:
+            # Verificar si ya existe antes de insertar
+            cur.execute("SELECT 1 FROM reports WHERE date=%s AND mediator=%s AND turn=%s AND seq=%s",
+                (r['date'], med, r['turn'], r['_seq']))
+            if cur.fetchone():
+                duplicates += 1
+                continue
             cur.execute("""INSERT INTO reports
                 (date,mediator,turn,seq,mood,conducta,estiramientos,agua,pis,
                  banyo,estado,comunicacion,actividades,comidas,medicacion,
                  notas,vocab,formato,body_preview)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (date,mediator,turn,seq) DO NOTHING""",
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (r['date'], med, r['turn'], r['_seq'], r['mood'], r['conducta'],
                  r['estiramientos'], r['agua'], r['pis'], r['banyo'], r['estado'],
                  r['comunicacion'], r['actividades'], r['comidas'], r['medicacion'],
                  r['notas'], json.dumps(r['vocab'], ensure_ascii=False),
                  r['formato'], r['body_preview']))
-            if cur.rowcount > 0: inserted += 1
-            else: duplicates += 1
+            inserted += 1
         except Exception as e:
             db.rollback()
-            if inserted == 0 and duplicates == 0:
-                first_error = str(e)
-                print(f"INSERT error: {e} | row: {r.get('date')} {r.get('mediator')}")
+            first_error = str(e)
+            print(f"INSERT error: {e} | {r.get('date')} {r.get('mediator')}")
     dates = sorted(r['date'] for r in reports)
     try:
         cur.execute("INSERT INTO upload_log (total_in_file,new_inserted,duplicates,date_from,date_to) VALUES (%s,%s,%s,%s,%s)",

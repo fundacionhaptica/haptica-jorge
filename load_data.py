@@ -55,7 +55,7 @@ for r in data:
              banyo,estado,comunicacion,actividades,comidas,medicacion,
              notas,vocab,formato,body_preview)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (date,mediator,turn,seq) DO NOTHING""",
+            """,
             (r.get('date'), r.get('mediator',''), r.get('turn','sin especificar'),
              r.get('seq',1), r.get('mood','?'), r.get('conducta',0),
              r.get('estiramientos',0), r.get('agua'), r.get('pis'),
