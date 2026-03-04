@@ -349,7 +349,7 @@ def get_stats():
         )::numeric,2) AS avg_estado,
         ROUND(100.0*SUM(CASE WHEN conducta>0 THEN 1 ELSE 0 END)/COUNT(*),1) AS pct_picos,
         ROUND(AVG(CASE WHEN agua<3000 THEN agua END)) AS avg_agua
-        FROM reports GROUP BY month ORDER BY month DESC LIMIT 48""")
+        FROM reports GROUP BY month ORDER BY month ASC LIMIT 120""")
     monthly = [dict(r) for r in cur.fetchall()]
     cur.execute("""SELECT mediator, COUNT(*) AS total,
         ROUND(100.0*SUM(CASE WHEN conducta>0 THEN 1 ELSE 0 END)/COUNT(*),1) AS pct_picos,

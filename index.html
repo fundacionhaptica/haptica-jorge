@@ -547,11 +547,29 @@ function renderMoodChart(monthly) {
   var data = monthly.map(function(m) { return m.avg_mood || null; });
   var estadoData = monthly.map(function(m) { return m.avg_estado != null ? parseFloat(m.avg_estado) : null; });
   var EVENTS = [
-    {date:'2020/03',label:'COVID',color:'#7c3aed'},
-    {date:'2021/08',label:'Hosp.',color:'#dc2626'},
-    {date:'2022/11',label:'Nuevo equipo',color:'#2563eb'},
-    {date:'2025/04',label:'Inicio registro conducta',color:'#E8833A'},
+    {date:'2020/03',label:'COVID',color:'#7c3aed',
+     info:'Confinamiento por COVID-19. Ruptura de rutinas, cese de actividades presenciales y cambio total en el entorno de Jorge.'},
+    {date:'2021/08',label:'Hosp.',color:'#dc2626',
+     info:'Hospitalización de Jorge. Período de alta intensidad emocional y conductual para el equipo y la familia.'},
+    {date:'2021/12',label:'Salto ánimo',color:'#059669',
+     info:'Mejora notable y sostenida del estado de ánimo. Posible consolidación del equipo mediador y adaptación de rutinas tras el período difícil de 2021.'},
+    {date:'2022/11',label:'Nuevo equipo',color:'#2563eb',
+     info:'Incorporación de nuevos mediadores y reorganización del equipo de apoyo. Cambio en la dinámica de trabajo.'},
+    {date:'2025/04',label:'Registro conducta',color:'#E8833A',
+     info:'Inicio del registro sistemático de conductas. El aumento aparente de picos no refleja empeoramiento real, sino mayor precisión en la recogida de datos.'},
   ];
+  // Panel de info de hitos
+  var hitoPanel = null;
+  function showHitoInfo(ev, x, y) {
+    if(hitoPanel) hitoPanel.remove();
+    hitoPanel = document.createElement('div');
+    hitoPanel.style.cssText = 'position:fixed;background:#1e293b;color:#f1f5f9;padding:12px 16px;border-radius:10px;font-size:.82rem;max-width:280px;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.3);line-height:1.5;cursor:pointer';
+    hitoPanel.innerHTML = '<strong style="color:'+ev.color+'">'+ev.label+'</strong><br>'+ev.info+'<br><small style="color:#94a3b8;margin-top:4px;display:block">Clic para cerrar</small>';
+    hitoPanel.style.left = Math.min(x, window.innerWidth-300)+'px';
+    hitoPanel.style.top = Math.max(10,y-80)+'px';
+    hitoPanel.onclick = function(){ hitoPanel.remove(); hitoPanel=null; };
+    document.body.appendChild(hitoPanel);
+  }
   var eventPlugin = {
     id:'evLines',
     afterDraw: function(chart) {
@@ -566,17 +584,38 @@ function renderMoodChart(monthly) {
         ctx.beginPath();
         ctx.setLineDash([5,3]);
         ctx.strokeStyle = ev.color;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 2;
         ctx.moveTo(xPos, ca.top);
         ctx.lineTo(xPos, ca.bottom);
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.fillStyle = ev.color;
-        ctx.font = 'bold 8px sans-serif';
-        ctx.fillText(ev.label, xPos+3, ca.top+10);
+        ctx.font = 'bold 9px sans-serif';
+        ctx.fillText('▼ '+ev.label, xPos+3, ca.top+12);
         ctx.restore();
       });
     }
+  };
+  // Clicks en el canvas → detectar hito cercano
+  var moodCanvas = document.getElementById('ch-mood');
+  moodCanvas.style.cursor = 'pointer';
+  moodCanvas.onclick = function(e) {
+    var rect = moodCanvas.getBoundingClientRect();
+    var xClick = e.clientX - rect.left;
+    var chart = charts['mood'];
+    if(!chart) return;
+    var xScale = chart.scales.x;
+    var ca = chart.chartArea;
+    var closest = null, minDist = 18;
+    EVENTS.forEach(function(ev) {
+      var idx = labels.findIndex(function(l){ return l===ev.date||l.startsWith(ev.date); });
+      if(idx<0) return;
+      var xPos = xScale.getPixelForValue(idx);
+      var dist = Math.abs(xPos - xClick);
+      if(dist < minDist) { minDist=dist; closest=ev; }
+    });
+    if(closest) showHitoInfo(closest, e.clientX, e.clientY);
+    else if(hitoPanel) { hitoPanel.remove(); hitoPanel=null; }
   };
   charts['mood'] = new Chart(document.getElementById('ch-mood').getContext('2d'),{
     type:'line', plugins:[eventPlugin],
@@ -700,11 +739,20 @@ function openDetail(idx) {
   document.getElementById('det-title').textContent = 'Informe ' + r.date;
   document.getElementById('det-meta').textContent = r.mediator + ' · ' + (TURN_LABEL[r.turn]||r.turn||'—');
   var vocab = Array.isArray(r.vocab) ? r.vocab : (typeof r.vocab==='string'?JSON.parse(r.vocab||'[]'):[]);
+  // Calcular estado medio local
+  var moodBase = {'muy_positivo':5,'positivo':4,'neutro':3,'negativo':2}[r.mood]||3;
+  var rescueMeds = ['nolotil','paracetamol','ibuprofeno','diazepam','lorazepam','buscapina','algidol','spasmoctyl','fortasec'];
+  var medPenal = (r.medicacion && rescueMeds.some(function(m){return r.medicacion.toLowerCase().indexOf(m)>=0;})) ? 1 : 0;
+  var condPenal = (r.conducta && r.conducta > 0) ? 2 : 0;
+  var estadoNum = Math.max(0, Math.min(5, moodBase - condPenal - medPenal));
+  var estadoEmoji = ['😤','😟','😐','🙂','😊','😄'][estadoNum];
   var html = '<div class="d-grid">' +
-    '<div class="d-stat"><div class="d-stat-val"><span class="badge '+(MOOD_CLASS[r.mood]||'b-q')+'">'+(MOOD_LABEL[r.mood]||'?')+'</span></div><div class="d-stat-label">Estado ánimo</div></div>' +
+    '<div class="d-stat"><div class="d-stat-val"><span class="badge '+(MOOD_CLASS[r.mood]||'b-q')+'">'+(MOOD_LABEL[r.mood]||'?')+'</span></div><div class="d-stat-label">Ánimo mediador</div></div>' +
+    '<div class="d-stat"><div class="d-stat-val" style="font-size:1.4rem">' + estadoEmoji + ' ' + estadoNum + '/5</div><div class="d-stat-label">Estado medio</div></div>' +
     '<div class="d-stat"><div class="d-stat-val">'+(r.agua?r.agua+'ml':'—')+'</div><div class="d-stat-label">Hidratación</div></div>' +
-    '<div class="d-stat"><div class="d-stat-val">'+(r.conducta||0)+' pico'+(r.conducta!==1?'s':'')+'</div><div class="d-stat-label">Conducta</div></div>' +
-    '<div class="d-stat"><div class="d-stat-val">'+(r.pis!=null?r.pis:'—')+'</div><div class="d-stat-label">Pis (veces)</div></div>' +
+    '<div class="d-stat"><div class="d-stat-val">'+(r.conducta>0?'⚠️ '+r.conducta+' pico'+(r.conducta!==1?'s':''):'✅ Sin picos')+'</div><div class="d-stat-label">Conducta</div></div>' +
+    '<div class="d-stat"><div class="d-stat-val">'+(r.pis!=null?r.pis+' veces':'—')+'</div><div class="d-stat-label">Pis</div></div>' +
+    '<div class="d-stat"><div class="d-stat-val">'+(r.estiramientos?'✅':'—')+'</div><div class="d-stat-label">Estiramientos</div></div>' +
     '</div>';
   var sec = function(icon, title, val) { return val ? '<div class="ps"><div class="ps-title">'+icon+' '+title+'</div><div class="dtext">'+val+'</div></div>' : ''; };
   html += sec('🚿','Baño', r.banyo);
