@@ -188,6 +188,30 @@ def require_auth(f):
         return f(*args, **kwargs)
     return decorated
 
+# ── Estado medio (escala 0–5) ──────────────────────────────────────────────
+# Fórmula:
+#   Base según ánimo mediador:  muy_positivo=5, positivo=4, neutro=3, negativo=2, ?=3
+#   Penalizaciones (acumulables):
+#     · Conducta agresiva/autolesión ese día: -2
+#     · Medicación de rescate/dolor (nolotil, paracetamol, ibuprofeno,
+#       diazepam, lorazepam, buscapina, algidol, spasmoctyl, fortasec): -1
+#   Resultado: max(0, min(5, base + penalizaciones))
+RESCUE_MEDS = ['nolotil','paracetamol','ibuprofeno','diazepam','lorazepam',
+               'buscapina','algidol','spasmoctyl','fortasec','buscapina',
+               'vimovo','algidol','paracetamol']
+
+def calc_estado_medio(mood, conducta, medicacion):
+    base = {'muy_positivo':5,'positivo':4,'neutro':3,'negativo':2}.get(mood, 3)
+    penal = 0
+    if conducta and int(conducta) > 0:
+        penal -= 2
+    if medicacion:
+        med_low = medicacion.lower()
+        if any(m in med_low for m in RESCUE_MEDS):
+            penal -= 1
+    return max(0, min(5, base + penal))
+
+
 @app.route('/')
 def health():
     return jsonify({'status': 'ok', 'service': 'HAPTICA Jorge API', 'version': '2.0'})
@@ -315,6 +339,14 @@ def get_stats():
     cur.execute("""SELECT TO_CHAR(date,'YYYY-MM') AS month, COUNT(*) AS total,
         ROUND(AVG(CASE WHEN mood='muy_positivo' THEN 4 WHEN mood='positivo' THEN 3
                        WHEN mood='neutro' THEN 2 WHEN mood='negativo' THEN 1 ELSE 2.5 END)::numeric,2) AS avg_mood,
+        ROUND(AVG(
+            LEAST(5, GREATEST(0,
+              (CASE WHEN mood='muy_positivo' THEN 5 WHEN mood='positivo' THEN 4
+                    WHEN mood='neutro' THEN 3 WHEN mood='negativo' THEN 2 ELSE 3 END)
+              - (CASE WHEN conducta>0 THEN 2 ELSE 0 END)
+              - (CASE WHEN LOWER(COALESCE(medicacion,'')) SIMILAR TO '%(nolotil|paracetamol|ibuprofeno|diazepam|lorazepam|buscapina|algidol|spasmoctyl|fortasec)%' THEN 1 ELSE 0 END)
+            ))
+        )::numeric,2) AS avg_estado,
         ROUND(100.0*SUM(CASE WHEN conducta>0 THEN 1 ELSE 0 END)/COUNT(*),1) AS pct_picos,
         ROUND(AVG(CASE WHEN agua<3000 THEN agua END)) AS avg_agua
         FROM reports GROUP BY month ORDER BY month DESC LIMIT 48""")
