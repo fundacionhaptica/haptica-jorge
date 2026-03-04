@@ -149,46 +149,16 @@ def init_db():
         print(f"init_db error: {e}")
 
 def auto_seed():
+    """Carga seed.json si la BD está vacía. Se ejecuta en thread background."""
     seed_file = os.path.join(os.path.dirname(__file__), 'seed.json')
     if not os.path.exists(seed_file):
-        print("auto_seed: seed.json no encontrado, skip")
-        return
+        print("auto_seed: seed.json no encontrado"); return
     try:
-        db = psycopg2.connect(DATABASE_URL)
-        cur = db.cursor()
-        cur.execute('SELECT COUNT(*) FROM reports')
-        n = cur.fetchone()[0]
-        if n > 100:
-            print(f"auto_seed: BD tiene {n} registros, skip")
-            cur.close(); db.close(); return
-        print(f"auto_seed: BD vacía ({n}), cargando seed...")
-        with open(seed_file, encoding='utf-8') as f:
-            data = json.load(f)
-        inserted = 0
-        for r in data:
-            try:
-                cur.execute("""INSERT INTO reports
-                    (date,mediator,turn,seq,mood,conducta,estiramientos,agua,pis,
-                     banyo,estado,comunicacion,actividades,comidas,medicacion,
-                     notas,vocab,formato,body_preview)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (date,mediator,turn,seq) DO NOTHING""",
-                    (r.get('date'), r.get('mediator',''),
-                     r.get('turn','sin especificar'), r.get('seq',1),
-                     r.get('mood','?'), r.get('conducta',0), r.get('estiramientos',0),
-                     r.get('agua'), r.get('pis'), r.get('banyo',''),
-                     r.get('estado',''), r.get('comunicacion',''),
-                     r.get('actividades',''), r.get('comidas',''),
-                     r.get('medicacion',''), r.get('notas',''),
-                     json.dumps(r.get('vocab',[]), ensure_ascii=False),
-                     r.get('formato','v1'), r.get('body_preview','')[:300]))
-                if cur.rowcount > 0: inserted += 1
-            except Exception as e:
-                db.rollback()
-                continue
-        db.commit()
-        cur.close(); db.close()
-        print(f"auto_seed: {inserted}/{len(data)} registros insertados")
+        import subprocess
+        result = subprocess.run(['python3', 'load_data.py'], 
+            capture_output=True, text=True, timeout=300)
+        print("load_data stdout:", result.stdout[-500:] if result.stdout else '')
+        if result.stderr: print("load_data stderr:", result.stderr[-200:])
     except Exception as e:
         print(f"auto_seed error: {e}")
 
