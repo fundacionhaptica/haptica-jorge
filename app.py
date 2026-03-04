@@ -225,46 +225,54 @@ def upload():
         return jsonify({'error': 'No se encontraron informes'}), 400
 
     db = get_db(); cur = db.cursor()
-    inserted = duplicates = 0
-    first_error = ''
+    cur.execute("SELECT date::text, mediator, LEFT(body_preview,200) FROM reports")
+    existing = set((row[0], row[1], row[2]) for row in cur.fetchall())
+
+    to_insert = []
+    duplicates = 0
     for r in reports:
         med = normalize_mediator(r['mediator'])
+        key = (r['date'], med, r['body_preview'][:200])
+        if key in existing:
+            duplicates += 1
+        else:
+            to_insert.append((
+                r['date'], med, r['turn'], r['mood'], r['conducta'],
+                r['estiramientos'], r['agua'], r['pis'], r['banyo'], r['estado'],
+                r['comunicacion'], r['actividades'], r['comidas'], r['medicacion'],
+                r['notas'], json.dumps(r['vocab'], ensure_ascii=False),
+                r['formato'], r['body_preview'][:300]
+            ))
+
+    inserted = 0
+    SQL = "INSERT INTO reports (date,mediator,turn,mood,conducta,estiramientos,agua,pis,banyo,estado,comunicacion,actividades,comidas,medicacion,notas,vocab,formato,body_preview) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+    if to_insert:
         try:
-            cur.execute("SAVEPOINT sp1")
-            cur.execute("SELECT 1 FROM reports WHERE date=%s AND mediator=%s AND body_preview=%s",
-                (r['date'], med, r['body_preview'][:200]))
-            if cur.fetchone():
-                cur.execute("RELEASE SAVEPOINT sp1")
-                duplicates += 1
-                continue
-            cur.execute("""INSERT INTO reports
-                (date,mediator,turn,mood,conducta,estiramientos,agua,pis,
-                 banyo,estado,comunicacion,actividades,comidas,medicacion,
-                 notas,vocab,formato,body_preview)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                (r['date'], med, r['turn'], r['mood'], r['conducta'],
-                 r['estiramientos'], r['agua'], r['pis'], r['banyo'], r['estado'],
-                 r['comunicacion'], r['actividades'], r['comidas'], r['medicacion'],
-                 r['notas'], json.dumps(r['vocab'], ensure_ascii=False),
-                 r['formato'], r['body_preview'][:300]))
-            cur.execute("RELEASE SAVEPOINT sp1")
-            inserted += 1
+            cur.executemany(SQL, to_insert)
+            inserted = len(to_insert)
+            db.commit()
         except Exception as e:
-            cur.execute("ROLLBACK TO SAVEPOINT sp1")
-            cur.execute("RELEASE SAVEPOINT sp1")
-            if not first_error:
-                first_error = str(e)
-                print(f"INSERT error: {e} | {r.get('date')} {r.get('mediator')}")
+            db.rollback()
+            print("executemany error:", str(e)[:200])
+            for row in to_insert:
+                try:
+                    cur.execute("SAVEPOINT s1")
+                    cur.execute(SQL, row)
+                    cur.execute("RELEASE SAVEPOINT s1")
+                    inserted += 1
+                except:
+                    cur.execute("ROLLBACK TO SAVEPOINT s1")
+                    cur.execute("RELEASE SAVEPOINT s1")
+            db.commit()
+
     dates = sorted(r['date'] for r in reports)
     try:
         cur.execute("INSERT INTO upload_log (total_in_file,new_inserted,duplicates,date_from,date_to) VALUES (%s,%s,%s,%s,%s)",
                     (len(reports), inserted, duplicates, dates[0], dates[-1]))
+        db.commit()
     except: pass
-    db.commit()
-    err_info = locals().get('first_error','')
-    return jsonify({'ok': True, 'total_in_file': len(reports), 'new_inserted': inserted, 'first_error': err_info,
+    return jsonify({'ok': True, 'total_in_file': len(reports), 'new_inserted': inserted,
                     'duplicates': duplicates, 'date_from': dates[0], 'date_to': dates[-1]})
-
 
 @app.route('/api/reports')
 @require_auth
