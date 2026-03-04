@@ -835,7 +835,7 @@ function adminAction(action) {
   var msg = document.getElementById('admin-msg');
   msg.style.display='block'; msg.style.background='#f8fafc'; msg.style.color='#6b7280';
   msg.textContent = 'Ejecutando...';
-  var url = action === 'normalize' ? '/api/admin/normalize' : '/api/admin/reload-seed';
+  var url = action === 'normalize' ? '/api/admin/normalize' : action === 'truncate' ? '/api/admin/truncate' : '/api/admin/reload-seed';
   fetch(url, { method:'POST', headers:{'X-Admin-Password': pwd, 'X-Password': API_PWD} })
     .then(function(r){ return r.json(); })
     .then(function(d){
@@ -843,6 +843,8 @@ function adminAction(action) {
         msg.style.background='#f0fdf4'; msg.style.color='#16a34a';
         msg.textContent = action==='normalize'
           ? '✅ Normalizados ' + (d.total_updated||0) + ' registros'
+          : action==='truncate'
+          ? '✅ BD vaciada. Ahora sube el chat completo con Actualizar datos.'
           : '✅ BD recargada: ' + d.inserted + '/' + d.total + ' informes';
         setTimeout(function(){ loadAll(); }, 1500);
       } else {
@@ -908,6 +910,9 @@ function adminAction(action) {
       </button>
       <button onclick="adminAction('reload')" style="padding:9px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit">
         ♻️ Recargar BD completa desde seed (2019-2026)
+      </button>
+      <button onclick="adminAction('truncate')" style="padding:9px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit">
+        🗑️ Vaciar BD (para reimportar desde cero)
       </button>
       <div id="admin-msg" style="font-size:.82rem;padding:.5rem;border-radius:6px;display:none"></div>
     </div>

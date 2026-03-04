@@ -518,6 +518,21 @@ def admin_reload_seed():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+@app.route('/api/admin/truncate', methods=['POST'])
+def admin_truncate():
+    admin_pwd = request.headers.get('X-Admin-Password','')
+    if admin_pwd != ADMIN_PASSWORD and admin_pwd != API_PASSWORD:
+        return jsonify({'error': 'No autorizado'}), 403
+    try:
+        db = get_db(); cur = db.cursor()
+        cur.execute('TRUNCATE TABLE reports RESTART IDENTITY CASCADE')
+        db.commit()
+        cur.close()
+        return jsonify({'ok': True, 'msg': 'Tabla reports vaciada'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
