@@ -14,6 +14,46 @@ except ImportError:
 from parser import parse_whatsapp
 
 load_dotenv()
+# ── Normalizador de actividades ────────────────────────────────────────────────
+_ACTIVITY_MAP = {
+    'tranvía': ['tranvia','tranvía','tranvía y mediadores','tranvia al centro','tranvía al centro','tranvia a casa','tranvía a casa'],
+    'piscina': ['piscina','nadar','natación','piscina…'],
+    'bicicleta': ['bici','bicicleta'],
+    'paseo': ['paseo','paseo por el pinar','el pinar','pinar'],
+    'cinta de correr': ['cinta de correr','cinta de correr…'],
+    'desayuno': ['desayuno','desayuno)'],
+    'almuerzo': ['almuerzo'],
+    'comida': ['comida'],
+    'merienda': ['merienda','merendamos'],
+    'cena': ['cena','cena (signos habitación','cena ( signos babero'],
+    'aseo/higiene': ['aseo','ducha','ropa','peinar','calcetines','babero','sucio'],
+    'rutina residencia': ['rutina de residencia (ducha','rutina de residencia  (ducha','rutina de residencia'],
+    'tapones (autonomía)': ['tapones','tapones autónomamente','tapones de forma autónoma','tapones autonomamente'],
+    'autonomía': ['autonomía','autonomía: limpia mesa'],
+    'comunicación': ['comunicación','conversación trasversal'],
+    'braille': ['braille'],
+    'anticipadores': ['anticipadores','anticipadores...)','anticipación'],
+    'centro de recursos': ['centro de recursos','centro de recursos:'],
+    'huerto': ['huerto'],
+    'música': ['música'],
+    'relajación/masaje': ['relajación','masaje abdominal','masaje'],
+    'coche': ['coche de raúl','coche'],
+    'vuelta a casa': ['vuelta a casa'],
+    'compañeros': ['compañeros'],
+    'deporte': ['deporte'],
+}
+_INV_ACT = {}
+for _c, _vs in _ACTIVITY_MAP.items():
+    for _v in _vs:
+        _INV_ACT[_v.lower().strip()] = _c
+
+def normalize_activity(line):
+    line = line.strip().strip('-*\u2022\u00b7\u2060').strip().rstrip('.,').lower()
+    if len(line) < 3 or len(line) > 70:
+        return None
+    return _INV_ACT.get(line, line.capitalize())
+
+
 app = Flask(__name__)
 CORS(app)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
@@ -582,11 +622,16 @@ def admin_truncate():
 def vocab_stats():
     db = get_db(); cur = db.cursor()
     year = request.args.get('year', '')
-    where = "WHERE vocab IS NOT NULL AND vocab != '[]'"
+    mediator = request.args.get('mediator', '')
+    where_parts = ["vocab IS NOT NULL", "vocab != '[]'"]
     params = []
     if year:
-        where += " AND date >= %s AND date < %s"
-        params = [year+"-01-01", str(int(year)+1)+"-01-01"]
+        where_parts += ["date >= %s", "date < %s"]
+        params += [year+"-01-01", str(int(year)+1)+"-01-01"]
+    if mediator:
+        where_parts.append("mediator = %s")
+        params.append(mediator)
+    where = "WHERE " + " AND ".join(where_parts)
     cur.execute("SELECT vocab, actividades FROM reports " + where, params)
     from collections import Counter
     vocab_count = Counter()
@@ -602,13 +647,47 @@ def vocab_stats():
         except: pass
         act = (row['actividades'] or '').replace(',', SEP).replace(';', SEP)
         for line in act.split(SEP):
-            line = line.strip().strip('-*•·').strip()
-            if 3 < len(line) < 60:
-                act_count[line.lower()] += 1
+            norm = normalize_activity(line)
+            if norm:
+                act_count[norm] += 1
     return jsonify({
-        'vocab': [{'word': w, 'count': c} for w, c in vocab_count.most_common(40)],
-        'actividades': [{'act': a, 'count': c} for a, c in act_count.most_common(25)]
+        'vocab': [{'word': w, 'count': c} for w, c in vocab_count.most_common(80)],
+        'actividades': [{'act': a, 'count': c} for a, c in act_count.most_common(30)]
     })
+
+@app.route('/api/correlations')
+@require_auth
+def get_correlations():
+    db = get_db(); cur = db.cursor()
+    # Por mediador
+    cur.execute("""SELECT mediator,
+        COUNT(*) AS total,
+        ROUND(100.0*SUM(CASE WHEN conducta>0 THEN 1 ELSE 0 END)/COUNT(*),1) AS pct_picos,
+        ROUND(AVG(CASE WHEN mood='muy_positivo' THEN 4 WHEN mood='positivo' THEN 3
+                       WHEN mood='neutro' THEN 2 WHEN mood='negativo' THEN 1 ELSE NULL END)::numeric,2) AS avg_mood
+        FROM reports GROUP BY mediator HAVING COUNT(*)>=5 ORDER BY total DESC""")
+    by_med = [dict(r) for r in cur.fetchall()]
+    # Por turno
+    cur.execute("""SELECT turn,
+        COUNT(*) AS total,
+        ROUND(100.0*SUM(CASE WHEN conducta>0 THEN 1 ELSE 0 END)/COUNT(*),1) AS pct_picos,
+        ROUND(AVG(CASE WHEN mood='muy_positivo' THEN 4 WHEN mood='positivo' THEN 3
+                       WHEN mood='neutro' THEN 2 WHEN mood='negativo' THEN 1 ELSE NULL END)::numeric,2) AS avg_mood
+        FROM reports WHERE turn != 'sin especificar' GROUP BY turn ORDER BY turn""")
+    by_turn = [dict(r) for r in cur.fetchall()]
+    # Con/sin medicación de rescate
+    cur.execute("""SELECT
+        CASE WHEN LOWER(COALESCE(medicacion,'')) SIMILAR TO
+            '%(nolotil|paracetamol|ibuprofeno|diazepam|lorazepam|buscapina|algidol|spasmoctyl|fortasec)%'
+            THEN 'Con med. rescate' ELSE 'Sin med. rescate' END AS med_type,
+        COUNT(*) AS total,
+        ROUND(100.0*SUM(CASE WHEN conducta>0 THEN 1 ELSE 0 END)/COUNT(*),1) AS pct_picos,
+        ROUND(AVG(CASE WHEN mood='muy_positivo' THEN 4 WHEN mood='positivo' THEN 3
+                       WHEN mood='neutro' THEN 2 WHEN mood='negativo' THEN 1 ELSE NULL END)::numeric,2) AS avg_mood
+        FROM reports GROUP BY med_type""")
+    by_med_type = [dict(r) for r in cur.fetchall()]
+    return jsonify({'by_mediator': by_med, 'by_turn': by_turn, 'by_medication': by_med_type})
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

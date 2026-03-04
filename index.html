@@ -333,6 +333,8 @@ tbody td{padding:6px 10px;vertical-align:middle}
   <div class="tabs">
     <button class="tb active" data-tab="overview" onclick="showTab('overview')">📊 Resumen</button>
     <button class="tb" data-tab="list" onclick="showTab('list')">📋 Informes</button>
+    <button class="tb" data-tab="vocab" onclick="showTab('vocab')">💬 Vocabulario</button>
+    <button class="tb" data-tab="corr" onclick="showTab('corr')">🔗 Correlaciones</button>
     <button class="tb" data-tab="log" onclick="showTab('log')">📥 Historial subidas</button>
   </div>
 
@@ -354,6 +356,16 @@ tbody td{padding:6px 10px;vertical-align:middle}
   <div id="tab-log" class="hidden">
     <div id="log-content">
       <div class="loading"><div class="spinner"></div> Cargando historial...</div>
+    </div>
+  </div>
+  <div id="tab-vocab" class="hidden">
+    <div id="vocab-tab-content" style="padding:1rem">
+      <div class="loading"><div class="spinner"></div> Cargando...</div>
+    </div>
+  </div>
+  <div id="tab-corr" class="hidden">
+    <div id="corr-tab-content" style="padding:1rem">
+      <div class="loading"><div class="spinner"></div> Cargando...</div>
     </div>
   </div>
 </main>
@@ -478,7 +490,7 @@ function updateHeader() {
 
 // ── TABS ──────────────────────────────────────────────────────────────────────
 function showTab(t) {
-  ['overview','list','log'].forEach(function(id) {
+  ['overview','list','log','vocab','corr'].forEach(function(id) {
     document.getElementById('tab-'+id).style.display = id===t ? 'block' : 'none';
   });
   document.querySelectorAll('.tb').forEach(function(btn) {
@@ -490,6 +502,8 @@ function showTab(t) {
     } else { renderList(); }
   }
   if(t==='log') renderLog();
+  if(t==='vocab') renderVocabTab();
+  if(t==='corr') renderCorrTab();
 }
 
 // ── FILTROS ───────────────────────────────────────────────────────────────────
@@ -583,6 +597,118 @@ function renderVocabStats() {
 
     el.innerHTML = vocabHTML;
   }).catch(function(){ });
+}
+
+
+function renderVocabTab() {
+  var el = document.getElementById('vocab-tab-content');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Cargando...</div>';
+  apiFetch('/api/vocab-stats').then(function(r){return r.json();}).then(function(d){
+    var vocab = d.vocab || [];
+    var acts = d.actividades || [];
+    var maxV = vocab.length ? vocab[0].count : 1;
+    var maxA = acts.length ? acts[0].count : 1;
+
+    // Nube de palabras
+    var cloud = vocab.map(function(v) {
+      var size = 0.75 + (v.count/maxV)*1.4;
+      var op = 0.45 + (v.count/maxV)*0.55;
+      var hue = Math.round((vocab.indexOf(v)/vocab.length)*280);
+      return '<span title="'+v.word+': '+v.count+' veces" style="font-size:'+size.toFixed(2)+'rem;color:hsl('+hue+',60%,38%);opacity:'+op.toFixed(2)+';margin:2px 6px;cursor:default;display:inline-block">'+v.word+'</span>';
+    }).join('');
+
+    // Top 25 barras
+    var bars = vocab.slice(0,25).map(function(v) {
+      var pct = Math.round(v.count/maxV*100);
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'+
+        '<div style="width:130px;text-align:right;font-size:.8rem;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+v.word+'</div>'+
+        '<div style="flex:1;background:#e5e7eb;border-radius:4px;height:12px"><div style="width:'+pct+'%;background:#2A7F7F;border-radius:4px;height:12px"></div></div>'+
+        '<div style="width:30px;font-size:.75rem;color:#6b7280">'+v.count+'</div></div>';
+    }).join('');
+
+    // Actividades
+    var actBars = acts.slice(0,25).map(function(a) {
+      var pct = Math.round(a.count/maxA*100);
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'+
+        '<div style="width:160px;text-align:right;font-size:.8rem;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+a.act+'">'+a.act+'</div>'+
+        '<div style="flex:1;background:#e5e7eb;border-radius:4px;height:12px"><div style="width:'+pct+'%;background:#7c3aed;border-radius:4px;height:12px"></div></div>'+
+        '<div style="width:30px;font-size:.75rem;color:#6b7280">'+a.count+'</div></div>';
+    }).join('');
+
+    el.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;flex-wrap:wrap">'+
+        '<div class="cc"><div class="cc-title">☁️ Nube de vocabulario (top 80)</div>'+
+          '<div style="padding:.8rem;line-height:2.4">'+cloud+'</div></div>'+
+        '<div class="cc"><div class="cc-title">📊 Top 25 palabras</div>'+
+          '<div style="padding:.8rem">'+bars+'</div></div>'+
+        '<div class="cc"><div class="cc-title">🎯 Actividades más frecuentes</div>'+
+          '<div style="padding:.8rem">'+actBars+'</div></div>'+
+      '</div>';
+  }).catch(function(e){ el.innerHTML = '<p style="color:red">Error: '+e.message+'</p>'; });
+}
+
+function renderCorrTab() {
+  var el = document.getElementById('corr-tab-content');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Cargando...</div>';
+  apiFetch('/api/correlations').then(function(r){return r.json();}).then(function(d){
+    var byMed = d.by_mediator || [];
+    var byTurn = d.by_turn || [];
+    var byMedType = d.by_medication || [];
+
+    function moodBar(val) {
+      if(!val) return '—';
+      var pct = Math.round((parseFloat(val)-1)/3*100);
+      var col = pct > 65 ? '#16a34a' : pct > 40 ? '#2A7F7F' : '#dc2626';
+      return '<div style="display:flex;align-items:center;gap:4px">'+
+        '<div style="width:60px;background:#e5e7eb;border-radius:3px;height:8px"><div style="width:'+pct+'%;background:'+col+';border-radius:3px;height:8px"></div></div>'+
+        '<span style="font-size:.75rem">'+val+'</span></div>';
+    }
+    function picoBar(val) {
+      if(val==null) return '—';
+      var pct = Math.min(100,parseFloat(val));
+      var col = pct > 30 ? '#dc2626' : pct > 10 ? '#ea7c00' : '#16a34a';
+      return '<div style="display:flex;align-items:center;gap:4px">'+
+        '<div style="width:60px;background:#e5e7eb;border-radius:3px;height:8px"><div style="width:'+pct+'%;background:'+col+';border-radius:3px;height:8px"></div></div>'+
+        '<span style="font-size:.75rem">'+val+'%</span></div>';
+    }
+
+    var medRows = byMed.map(function(m){
+      return '<tr><td style="font-size:.8rem">'+m.mediator+'</td>'+
+        '<td style="text-align:center;font-size:.8rem">'+m.total+'</td>'+
+        '<td>'+picoBar(m.pct_picos)+'</td>'+
+        '<td>'+moodBar(m.avg_mood)+'</td></tr>';
+    }).join('');
+
+    var turnRows = byTurn.map(function(t){
+      var label = {'manana':'🌅 Mañana','tarde':'🌇 Tarde','noche':'🌙 Noche'}[t.turn]||t.turn;
+      return '<tr><td style="font-size:.8rem">'+label+'</td>'+
+        '<td style="text-align:center;font-size:.8rem">'+t.total+'</td>'+
+        '<td>'+picoBar(t.pct_picos)+'</td>'+
+        '<td>'+moodBar(t.avg_mood)+'</td></tr>';
+    }).join('');
+
+    var medTypeRows = byMedType.map(function(m){
+      return '<tr><td style="font-size:.8rem">'+m.med_type+'</td>'+
+        '<td style="text-align:center;font-size:.8rem">'+m.total+'</td>'+
+        '<td>'+picoBar(m.pct_picos)+'</td>'+
+        '<td>'+moodBar(m.avg_mood)+'</td></tr>';
+    }).join('');
+
+    var tableHdr = '<tr style="background:#f8fafc"><th style="text-align:left;padding:6px 8px;font-size:.78rem;color:#6b7280">Nombre</th><th style="padding:6px 8px;font-size:.78rem;color:#6b7280">Informes</th><th style="padding:6px 8px;font-size:.78rem;color:#6b7280">% Picos</th><th style="padding:6px 8px;font-size:.78rem;color:#6b7280">Ánimo medio</th></tr>';
+    var note = '<div style="margin-top:1rem;padding:10px 14px;background:#fefce8;border-left:3px solid #ca8a04;border-radius:6px;font-size:.78rem;color:#92400e">⚠️ <strong>Nota:</strong> Estas correlaciones son observacionales, no causales. Un mediador con más picos puede haber coincidido con períodos difíciles de Jorge independientemente de su trabajo.</div>';
+
+    el.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">'+
+        '<div class="cc"><div class="cc-title">👥 Picos y ánimo por mediador/a</div>'+
+          '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+tableHdr+medRows+'</table></div></div>'+
+        '<div style="display:flex;flex-direction:column;gap:1.5rem">'+
+          '<div class="cc"><div class="cc-title">🕐 Por turno</div>'+
+            '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+tableHdr+turnRows+'</table></div></div>'+
+          '<div class="cc"><div class="cc-title">💊 Con/sin medicación de rescate</div>'+
+            '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'+tableHdr+medTypeRows+'</table></div></div>'+
+        '</div>'+
+      '</div>'+note;
+  }).catch(function(e){ el.innerHTML = '<p style="color:red">Error: '+e.message+'</p>'; });
 }
 
 
