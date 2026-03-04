@@ -511,9 +511,10 @@ function showTab(t) {
 function sf(key, val, btn) {
   F[key] = val;
   if(btn) {
-    btn.closest('.sb-group').querySelectorAll('.sb-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.closest('.fg').querySelectorAll('.fb').forEach(function(b) { b.classList.remove('active'); });
     btn.classList.add('active');
   }
+  applyFilters();
 }
 
 function applyFilters() {
@@ -554,9 +555,9 @@ function renderOverview() {
       <div class="cc"><div class="cc-title">👥 Informes por mediador/a</div><div class="cw tall"><canvas id="ch-med"></canvas></div></div>
       <div class="cc"><div class="cc-title">💧 Hidratación media (ml)</div><div class="cw tall"><canvas id="ch-agua"></canvas></div></div>
       <div class="cc"><div class="cc-title">⚡ Picos de conducta (%)</div><div class="cw tall"><canvas id="ch-cond"></canvas></div></div>
-      <div class="cc" style="grid-column:1/-1" id="vocab-section">
-        <div class="cc-title">🗣️ Vocabulario y actividades más frecuentes</div>
-        <div id="vocab-content" style="padding:.5rem .8rem">
+      <div class="cc" style="grid-column:1/-1">
+        <div class="cc-title">👥 Mediadores activos — últimos 6 meses</div>
+        <div id="med-summary-content" style="padding:.5rem .8rem">
           <div style="color:#94a3b8;font-size:.85rem">Cargando...</div>
         </div>
       </div>
@@ -565,7 +566,7 @@ function renderOverview() {
   renderMedChart();
   renderAguaChart(monthly);
   renderCondChart(monthly);
-  renderVocabStats();
+  renderMediatorSummary();
 }
 
 function renderVocabStats() {
@@ -713,6 +714,65 @@ function renderCorrTab() {
         '</div>'+
       '</div>'+note;
   }).catch(function(e){ el.innerHTML = '<p style="color:red">Error: '+e.message+'</p>'; });
+}
+
+
+function renderMediatorSummary() {
+  var el = document.getElementById('med-summary-content');
+  if(!el) return;
+  apiFetch('/api/mediators-summary').then(function(r){return r.json();}).then(function(d){
+    var meds = d.mediators || [];
+    if(!meds.length) { el.innerHTML = '<p style="color:#94a3b8;font-size:.85rem;padding:.5rem">Sin datos en los últimos 6 meses</p>'; return; }
+
+    function moodLabel(v) {
+      if(!v) return '—';
+      v = parseFloat(v);
+      var emoji = v>=3.5?'😄':v>=2.8?'😊':v>=2?'😐':'😔';
+      return emoji + ' ' + v.toFixed(1);
+    }
+    function estadoLabel(v) {
+      if(v==null) return '—';
+      v = parseFloat(v);
+      var emoji = v>=4.5?'😄':v>=3.5?'😊':v>=2.5?'🙂':v>=1.5?'😐':v>=0.5?'😟':'😤';
+      var col = v>=4?'#16a34a':v>=3?'#2A7F7F':v>=2?'#ea7c00':'#dc2626';
+      return '<span style="color:'+col+';font-weight:600">'+emoji+' '+v.toFixed(1)+'</span>';
+    }
+    function miniBar(v, max, col) {
+      var pct = Math.round(parseFloat(v||0)/max*100);
+      return '<div style="display:flex;align-items:center;gap:5px">'+
+        '<div style="width:50px;background:#e5e7eb;border-radius:3px;height:7px">'+
+          '<div style="width:'+pct+'%;background:'+col+';border-radius:3px;height:7px"></div></div>'+
+        '<span style="font-size:.75rem;color:#6b7280">'+parseFloat(v||0).toFixed(1)+'</span></div>';
+    }
+
+    var maxMood = 4, maxEstado = 5;
+    var rows = meds.map(function(m) {
+      var desde = (m.first_date||'').slice(0,7).replace('-','/');
+      var hasta = (m.last_date||'').slice(0,7).replace('-','/');
+      return '<tr style="border-bottom:1px solid #f1f5f9">'+
+        '<td style="padding:8px 10px;font-weight:600;font-size:.83rem;color:#1e293b">'+m.mediator+'</td>'+
+        '<td style="padding:8px 10px;text-align:center;font-size:.78rem;color:#64748b">'+m.total+'</td>'+
+        '<td style="padding:8px 10px;font-size:.78rem;color:#64748b">'+desde+' – '+hasta+'</td>'+
+        '<td style="padding:8px 10px">'+miniBar(m.avg_mood_med, maxMood, '#2A7F7F')+'</td>'+
+        '<td style="padding:8px 10px">'+estadoLabel(m.avg_estado)+'</td>'+
+        '</tr>';
+    }).join('');
+
+    el.innerHTML =
+      '<table style="width:100%;border-collapse:collapse">'+
+        '<thead><tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb">'+
+          '<th style="text-align:left;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600">Mediador/a</th>'+
+          '<th style="text-align:center;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600">Informes</th>'+
+          '<th style="text-align:left;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600">Período</th>'+
+          '<th style="text-align:left;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600" title="Valoración directa del mediador (1-4)">Ánimo mediador</th>'+
+          '<th style="text-align:left;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600" title="Score ponderado: ánimo 45% + conducta 35% + medicación 20%">Estado calculado (0-5)</th>'+
+        '</tr></thead>'+
+        '<tbody>'+rows+'</tbody>'+
+      '</table>'+
+      '<div style="margin-top:8px;padding:6px 10px;font-size:.72rem;color:#94a3b8">'+
+        '* Ánimo mediador: puntuación directa del mediador (1-4) · Estado calculado: fórmula ponderada propia (0-5)'+
+      '</div>';
+  }).catch(function(e){ if(el) el.innerHTML = '<p style="color:#dc2626;font-size:.82rem">Error: '+e.message+'</p>'; });
 }
 
 

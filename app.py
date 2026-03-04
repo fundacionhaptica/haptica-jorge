@@ -704,6 +704,45 @@ def get_correlations():
     return jsonify({'by_mediator': by_med, 'by_turn': by_turn, 'by_medication': by_med_type})
 
 
+@app.route('/api/mediators-summary')
+@require_auth
+def mediators_summary():
+    db = get_db(); cur = db.cursor()
+    cur.execute("""
+        SELECT mediator,
+            COUNT(*) AS total,
+            ROUND(AVG(CASE WHEN mood='muy_positivo' THEN 4 WHEN mood='positivo' THEN 3
+                           WHEN mood='neutro' THEN 2 WHEN mood='negativo' THEN 1 ELSE NULL END)::numeric,2) AS avg_mood_med,
+            ROUND(AVG(
+                LEAST(5.0, GREATEST(0.0, (
+                  (CASE WHEN mood='muy_positivo' THEN 1.0 WHEN mood='positivo' THEN 0.75
+                        WHEN mood='neutro' THEN 0.5 WHEN mood='negativo' THEN 0.0 ELSE 0.5 END)*0.45
+                  +(CASE WHEN conducta=0 THEN 1.0 WHEN conducta=1 THEN 0.4 ELSE 0.0 END)*0.35
+                  +(CASE WHEN LOWER(COALESCE(medicacion,'')) SIMILAR TO
+                    '%(nolotil|paracetamol|ibuprofeno|diazepam|lorazepam|buscapina|algidol|spasmoctyl|fortasec)%'
+                    THEN 0.0 ELSE 1.0 END)*0.20
+                  -(CASE WHEN conducta>=2 THEN 0.25 ELSE 0.0 END)
+                  -(CASE WHEN LOWER(COALESCE(medicacion,'')) SIMILAR TO '%(diazepam|lorazepam)%'
+                    THEN 0.10 ELSE 0.0 END)
+                )*5.0))
+            )::numeric,2) AS avg_estado,
+            MIN(date) AS first_date,
+            MAX(date) AS last_date
+        FROM reports
+        WHERE date >= CURRENT_DATE - INTERVAL '6 months'
+        GROUP BY mediator
+        HAVING COUNT(*) >= 3
+        ORDER BY last_date DESC, total DESC
+    """)
+    rows = []
+    for r in cur.fetchall():
+        d = dict(r)
+        d['first_date'] = d['first_date'].isoformat() if d['first_date'] else None
+        d['last_date'] = d['last_date'].isoformat() if d['last_date'] else None
+        rows.append(d)
+    return jsonify({'mediators': rows})
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
