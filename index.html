@@ -484,7 +484,11 @@ function showTab(t) {
   document.querySelectorAll('.tb').forEach(function(btn) {
     btn.classList.toggle('active', btn.dataset.tab === t);
   });
-  if(t==='list') renderList();
+  if(t==='list') {
+    if(REPORTS.length === 0) {
+      apiFetch('/api/reports'+buildQuery()).then(function(r){return r.json();}).then(function(d){REPORTS=d.reports||[];renderList();}).catch(function(){renderList();});
+    } else { renderList(); }
+  }
   if(t==='log') renderLog();
 }
 
@@ -532,12 +536,54 @@ function renderOverview() {
       <div class="cc"><div class="cc-title">👥 Informes por mediador/a</div><div class="cw tall"><canvas id="ch-med"></canvas></div></div>
       <div class="cc"><div class="cc-title">💧 Hidratación media (ml)</div><div class="cw tall"><canvas id="ch-agua"></canvas></div></div>
       <div class="cc"><div class="cc-title">⚡ Picos de conducta (%)</div><div class="cw tall"><canvas id="ch-cond"></canvas></div></div>
+      <div class="cc" style="grid-column:1/-1" id="vocab-section">
+        <div class="cc-title">🗣️ Vocabulario y actividades más frecuentes</div>
+        <div id="vocab-content" style="padding:.5rem .8rem">
+          <div style="color:#94a3b8;font-size:.85rem">Cargando...</div>
+        </div>
+      </div>
     </div>`;
   renderMoodChart(monthly);
   renderMedChart();
   renderAguaChart(monthly);
   renderCondChart(monthly);
+  renderVocabStats();
+
+function renderVocabStats() {
+  apiFetch('/api/vocab-stats').then(function(r){return r.json();}).then(function(d){
+    var el = document.getElementById('vocab-content');
+    if(!el) return;
+    var vocab = d.vocab || [];
+    var acts = d.actividades || [];
+    var maxV = vocab.length ? vocab[0].count : 1;
+    var maxA = acts.length ? acts[0].count : 1;
+
+    var vocabHTML = '<div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start">';
+    // Nube de palabras con tamaño proporcional
+    vocabHTML += '<div style="flex:1;min-width:280px"><div style="font-weight:600;color:#2A7F7F;margin-bottom:.5rem;font-size:.85rem">🗣️ Palabras más usadas</div><div style="line-height:2.2">';
+    vocab.forEach(function(v) {
+      var size = 0.72 + (v.count/maxV)*1.1;
+      var op = 0.5 + (v.count/maxV)*0.5;
+      vocabHTML += '<span title="'+v.count+' veces" style="font-size:'+size.toFixed(2)+'rem;color:#2A7F7F;opacity:'+op.toFixed(2)+';margin:0 5px;cursor:default">'+v.word+'</span>';
+    });
+    vocabHTML += '</div></div>';
+
+    // Tabla actividades
+    vocabHTML += '<div style="flex:1;min-width:280px"><div style="font-weight:600;color:#7c3aed;margin-bottom:.5rem;font-size:.85rem">🎯 Actividades más frecuentes</div><div style="font-size:.8rem">';
+    acts.slice(0,15).forEach(function(a) {
+      var pct = Math.round(a.count/maxA*100);
+      var cap = a.act.charAt(0).toUpperCase()+a.act.slice(1);
+      vocabHTML += '<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:5px">';
+      vocabHTML += '<div style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#374151" title="'+cap+'">'+cap+'</div>';
+      vocabHTML += '<div style="width:80px;background:#e5e7eb;border-radius:4px;height:8px"><div style="width:'+pct+'%;background:#7c3aed;border-radius:4px;height:8px"></div></div>';
+      vocabHTML += '<div style="width:28px;text-align:right;color:#6b7280;font-size:.75rem">'+a.count+'</div></div>';
+    });
+    vocabHTML += '</div></div></div>';
+
+    el.innerHTML = vocabHTML;
+  }).catch(function(){ });
 }
+
 
 function dc(id) { if(charts[id]) { charts[id].destroy(); delete charts[id]; } }
 
@@ -866,7 +912,7 @@ function saveAnnotation() {
   var msg=document.getElementById('ann-msg');
   if(!date||!label){msg.style.color='#dc2626';msg.textContent='Fecha y etiqueta obligatorias.';return;}
   msg.style.color='#6b7280';msg.textContent='Guardando...';
-  apiFetch('/api/annotations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:date,label:label,description:desc,color:color,type:'event'})})
+  apiFetch('/api/annotations',{method:'POST',headers:{'Content-Type':'application/json','X-Password':API_PWD},body:JSON.stringify({date:date,label:label,description:desc,color:color,type:'event'})})
     .then(function(r){return r.json();})
     .then(function(d){
       if(d.ok){

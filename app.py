@@ -577,6 +577,39 @@ def admin_truncate():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/vocab-stats')
+@require_auth
+def vocab_stats():
+    db = get_db(); cur = db.cursor()
+    year = request.args.get('year', '')
+    where = "WHERE vocab IS NOT NULL AND vocab != '[]'"
+    params = []
+    if year:
+        where += " AND date >= %s AND date < %s"
+        params = [year+"-01-01", str(int(year)+1)+"-01-01"]
+    cur.execute("SELECT vocab, actividades FROM reports " + where, params)
+    from collections import Counter
+    vocab_count = Counter()
+    act_count = Counter()
+    SEP = chr(10)
+    for row in cur.fetchall():
+        try:
+            v = json.loads(row['vocab']) if row['vocab'] else []
+            for w in v:
+                w = (w or '').strip().lower()
+                if len(w) > 1:
+                    vocab_count[w] += 1
+        except: pass
+        act = (row['actividades'] or '').replace(',', SEP).replace(';', SEP)
+        for line in act.split(SEP):
+            line = line.strip().strip('-*•·').strip()
+            if 3 < len(line) < 60:
+                act_count[line.lower()] += 1
+    return jsonify({
+        'vocab': [{'word': w, 'count': c} for w, c in vocab_count.most_common(40)],
+        'actividades': [{'act': a, 'count': c} for a, c in act_count.most_common(25)]
+    })
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
