@@ -224,40 +224,33 @@ def upload():
     if not reports:
         return jsonify({'error': 'No se encontraron informes'}), 400
 
-    # Calcular seq por (date, mediator, turn)
-    from collections import Counter
-    day_counts = Counter()
-    for r in reports:
-        key = (r['date'], normalize_mediator(r['mediator']), r['turn'])
-        day_counts[key] += 1
-        r['_seq'] = day_counts[key]
-
     db = get_db(); cur = db.cursor()
     inserted = duplicates = 0
+    first_error = ''
     for r in reports:
         med = normalize_mediator(r['mediator'])
         try:
-            # Verificar si ya existe antes de insertar
-            cur.execute("SELECT 1 FROM reports WHERE date=%s AND mediator=%s AND turn=%s AND seq=%s",
-                (r['date'], med, r['turn'], r['_seq']))
+            cur.execute("SELECT 1 FROM reports WHERE date=%s AND mediator=%s AND body_preview=%s",
+                (r['date'], med, r['body_preview'][:200]))
             if cur.fetchone():
                 duplicates += 1
                 continue
             cur.execute("""INSERT INTO reports
-                (date,mediator,turn,seq,mood,conducta,estiramientos,agua,pis,
+                (date,mediator,turn,mood,conducta,estiramientos,agua,pis,
                  banyo,estado,comunicacion,actividades,comidas,medicacion,
                  notas,vocab,formato,body_preview)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                (r['date'], med, r['turn'], r['_seq'], r['mood'], r['conducta'],
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (r['date'], med, r['turn'], r['mood'], r['conducta'],
                  r['estiramientos'], r['agua'], r['pis'], r['banyo'], r['estado'],
                  r['comunicacion'], r['actividades'], r['comidas'], r['medicacion'],
                  r['notas'], json.dumps(r['vocab'], ensure_ascii=False),
-                 r['formato'], r['body_preview']))
+                 r['formato'], r['body_preview'][:300]))
             inserted += 1
         except Exception as e:
             db.rollback()
-            first_error = str(e)
-            print(f"INSERT error: {e} | {r.get('date')} {r.get('mediator')}")
+            if not first_error:
+                first_error = str(e)
+                print(f"INSERT error: {e} | {r.get('date')} {r.get('mediator')}")
     dates = sorted(r['date'] for r in reports)
     try:
         cur.execute("INSERT INTO upload_log (total_in_file,new_inserted,duplicates,date_from,date_to) VALUES (%s,%s,%s,%s,%s)",
