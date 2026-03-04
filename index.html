@@ -546,7 +546,10 @@ function renderOverview() {
       <div class="kpi"><div class="kpi-val">${pct_ok}%</div><div class="kpi-label">Días sin picos</div></div>
     </div>
     <div class="charts-grid">
-      <div class="cc" style="grid-column:1/-1"><div class="cc-title">😊 Estado de ánimo mensual</div><div class="cw" style="height:180px"><canvas id="ch-mood"></canvas></div><div id="estado-leyenda" style="display:none;margin:4px 8px 8px;padding:8px 12px;background:#f5f3ff;border-left:3px solid #7c3aed;border-radius:6px;font-size:0.75rem;color:#4c1d95;line-height:1.7"><strong>📊 Estado medio (0–5):</strong> Base según ánimo (Muy positivo=5, Positivo=4, Neutro=3, Negativo=2) <span style="color:#dc2626">− 2 si hubo conducta agresiva</span> <span style="color:#ea7c00">− 1 si se usó medicación de rescate</span> (nolotil, paracetamol, ibuprofeno, diazepam, lorazepam, buscapina, algidol, spasmoctyl, fortasec)</div><div id="mediator-timeline" style="padding:.5rem .8rem;border-top:1px solid #e5e7eb;font-size:.78rem"></div></div>
+      <div class="cc" style="grid-column:1/-1"><div class="cc-title">😊 Estado de ánimo mensual</div><div class="cw" style="height:180px"><canvas id="ch-mood"></canvas></div><div id="estado-leyenda" style="display:none;margin:4px 8px 8px;padding:8px 12px;background:#f5f3ff;border-left:3px solid #7c3aed;border-radius:6px;font-size:0.75rem;color:#4c1d95;line-height:1.7"><strong>📊 Cómo se calcula el Estado medio (0–5):</strong>
+        Ánimo mediador <b>40%</b> · Ausencia de conducta <b>30%</b> · Sin medicación de rescate <b>20%</b> · Hidratación+baño <b>10%</b>
+        <span style="color:#dc2626">− penalización extra si 2+ picos (agresión/autolesión)</span> ·
+        <span style="color:#7c3aed">− penalización extra si tranquilizantes (diazepam/lorazepam)</span></div><div id="mediator-timeline" style="padding:.5rem .8rem;border-top:1px solid #e5e7eb;font-size:.78rem"></div></div>
       <div class="cc"><div class="cc-title">👥 Informes por mediador/a</div><div class="cw tall"><canvas id="ch-med"></canvas></div></div>
       <div class="cc"><div class="cc-title">💧 Hidratación media (ml)</div><div class="cw tall"><canvas id="ch-agua"></canvas></div></div>
       <div class="cc"><div class="cc-title">⚡ Picos de conducta (%)</div><div class="cw tall"><canvas id="ch-cond"></canvas></div></div>
@@ -912,13 +915,29 @@ function openDetail(idx) {
   document.getElementById('det-title').textContent = 'Informe ' + r.date;
   document.getElementById('det-meta').textContent = r.mediator + ' · ' + (TURN_LABEL[r.turn]||r.turn||'—');
   var vocab = Array.isArray(r.vocab) ? r.vocab : (typeof r.vocab==='string'?JSON.parse(r.vocab||'[]'):[]);
-  // Calcular estado medio local
-  var moodBase = {'muy_positivo':5,'positivo':4,'neutro':3,'negativo':2}[r.mood]||3;
-  var rescueMeds = ['nolotil','paracetamol','ibuprofeno','diazepam','lorazepam','buscapina','algidol','spasmoctyl','fortasec'];
-  var medPenal = (r.medicacion && rescueMeds.some(function(m){return r.medicacion.toLowerCase().indexOf(m)>=0;})) ? 1 : 0;
-  var condPenal = (r.conducta && r.conducta > 0) ? 2 : 0;
-  var estadoNum = Math.max(0, Math.min(5, moodBase - condPenal - medPenal));
-  var estadoEmoji = ['😤','😟','😐','🙂','😊','😄'][estadoNum];
+  // Calcular estado medio local — fórmula ponderada
+  var RESCUE = ['nolotil','paracetamol','ibuprofeno','diazepam','lorazepam','buscapina','algidol','spasmoctyl','fortasec'];
+  var TRANQ  = ['diazepam','lorazepam'];
+  var med = (r.medicacion||'').toLowerCase();
+  var moodS = {'muy_positivo':1.0,'positivo':0.75,'neutro':0.5,'negativo':0.0}[r.mood]||0.5;
+  var cond  = parseInt(r.conducta)||0;
+  var condS = cond===0 ? 1.0 : cond===1 ? 0.4 : 0.0;
+  var medS  = RESCUE.some(function(m){return med.indexOf(m)>=0;}) ? 0.0 : 1.0;
+  var agua  = parseInt(r.agua)||0;
+  var banyo = (r.banyo||'').trim();
+  var base;
+  if(agua>0||banyo){
+    var aguaS  = agua>=1000?1.0:agua>=500?0.6:0.3;
+    var banyoS = banyo.length>2?1.0:0.4;
+    var hidS   = (aguaS+banyoS)/2;
+    base = moodS*0.40 + condS*0.30 + medS*0.20 + hidS*0.10;
+  } else {
+    base = moodS*0.45 + condS*0.35 + medS*0.20;
+  }
+  if(cond>=2) base -= 0.25;
+  if(TRANQ.some(function(t){return med.indexOf(t)>=0;})) base -= 0.10;
+  var estadoNum = Math.round(Math.max(0,Math.min(5,base*5))*10)/10;
+  var estadoEmoji = estadoNum>=4.5?'😄':estadoNum>=3.5?'😊':estadoNum>=2.5?'🙂':estadoNum>=1.5?'😐':estadoNum>=0.5?'😟':'😤';
   var html = '<div class="d-grid">' +
     '<div class="d-stat"><div class="d-stat-val"><span class="badge '+(MOOD_CLASS[r.mood]||'b-q')+'">'+(MOOD_LABEL[r.mood]||'?')+'</span></div><div class="d-stat-label">Ánimo mediador</div></div>' +
     '<div class="d-stat"><div class="d-stat-val" style="font-size:1.4rem">' + estadoEmoji + ' ' + estadoNum + '/5</div><div class="d-stat-label">Estado medio</div></div>' +

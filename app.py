@@ -229,27 +229,37 @@ def require_auth(f):
     return decorated
 
 # ── Estado medio (escala 0–5) ──────────────────────────────────────────────
-# Fórmula:
-#   Base según ánimo mediador:  muy_positivo=5, positivo=4, neutro=3, negativo=2, ?=3
-#   Penalizaciones (acumulables):
-#     · Conducta agresiva/autolesión ese día: -2
-#     · Medicación de rescate/dolor (nolotil, paracetamol, ibuprofeno,
-#       diazepam, lorazepam, buscapina, algidol, spasmoctyl, fortasec): -1
-#   Resultado: max(0, min(5, base + penalizaciones))
-RESCUE_MEDS = ['nolotil','paracetamol','ibuprofeno','diazepam','lorazepam',
-               'buscapina','algidol','spasmoctyl','fortasec','buscapina',
-               'vimovo','algidol','paracetamol']
+# Fórmula ponderada:
+#   Ánimo mediador       40%  (muy_positivo=1.0, positivo=0.75, neutro=0.5, negativo=0.0)
+#   Ausencia conducta    30%  (sin picos=1.0, 1 pico=0.4, 2+ picos=0.0)
+#   Sin med. rescate     20%  (sin rescate=1.0, con rescate=0.0)
+#   Hidratación+baño     10%  (solo si hay datos; si no, se redistribuye entre los demás)
+# Penalizaciones extra:
+#   · 2+ picos conducta (agresión/autolesión): −0.25 adicional
+#   · Tranquilizantes (diazepam/lorazepam): −0.10 adicional
+# Resultado final: score_ponderado × 5, acotado a [0, 5]
+_RESCUE = ['nolotil','paracetamol','ibuprofeno','diazepam','lorazepam',
+           'buscapina','algidol','spasmoctyl','fortasec']
+_TRANQ  = ['diazepam','lorazepam']
 
-def calc_estado_medio(mood, conducta, medicacion):
-    base = {'muy_positivo':5,'positivo':4,'neutro':3,'negativo':2}.get(mood, 3)
-    penal = 0
-    if conducta and int(conducta) > 0:
-        penal -= 2
-    if medicacion:
-        med_low = medicacion.lower()
-        if any(m in med_low for m in RESCUE_MEDS):
-            penal -= 1
-    return max(0, min(5, base + penal))
+def calc_estado_medio(mood, conducta, medicacion, agua=None, banyo=None):
+    mood_s = {'muy_positivo':1.0,'positivo':0.75,'neutro':0.5,'negativo':0.0}.get(mood or '', 0.5)
+    cond   = int(conducta or 0)
+    cond_s = 1.0 if cond == 0 else (0.4 if cond == 1 else 0.0)
+    med    = (medicacion or '').lower()
+    med_s  = 0.0 if any(m in med for m in _RESCUE) else 1.0
+    agua_v = int(agua) if agua else 0
+    banyo_v = (banyo or '').strip()
+    if agua_v > 0 or banyo_v:
+        agua_s  = 1.0 if agua_v >= 1000 else (0.6 if agua_v >= 500 else 0.3)
+        banyo_s = 1.0 if len(banyo_v) > 2 else 0.4
+        hid_s   = (agua_s + banyo_s) / 2
+        base = mood_s*0.40 + cond_s*0.30 + med_s*0.20 + hid_s*0.10
+    else:
+        base = mood_s*0.45 + cond_s*0.35 + med_s*0.20
+    if cond >= 2:        base -= 0.25
+    if any(t in med for t in _TRANQ): base -= 0.10
+    return round(max(0.0, min(5.0, base * 5)), 1)
 
 
 @app.route('/')
@@ -380,12 +390,17 @@ def get_stats():
         ROUND(AVG(CASE WHEN mood='muy_positivo' THEN 4 WHEN mood='positivo' THEN 3
                        WHEN mood='neutro' THEN 2 WHEN mood='negativo' THEN 1 ELSE 2.5 END)::numeric,2) AS avg_mood,
         ROUND(AVG(
-            LEAST(5, GREATEST(0,
-              (CASE WHEN mood='muy_positivo' THEN 5 WHEN mood='positivo' THEN 4
-                    WHEN mood='neutro' THEN 3 WHEN mood='negativo' THEN 2 ELSE 3 END)
-              - (CASE WHEN conducta>0 THEN 2 ELSE 0 END)
-              - (CASE WHEN LOWER(COALESCE(medicacion,'')) SIMILAR TO '%(nolotil|paracetamol|ibuprofeno|diazepam|lorazepam|buscapina|algidol|spasmoctyl|fortasec)%' THEN 1 ELSE 0 END)
-            ))
+            LEAST(5.0, GREATEST(0.0, (
+              (CASE WHEN mood='muy_positivo' THEN 1.0 WHEN mood='positivo' THEN 0.75
+                    WHEN mood='neutro' THEN 0.5 WHEN mood='negativo' THEN 0.0 ELSE 0.5 END)*0.45
+              +(CASE WHEN conducta=0 THEN 1.0 WHEN conducta=1 THEN 0.4 ELSE 0.0 END)*0.35
+              +(CASE WHEN LOWER(COALESCE(medicacion,'')) SIMILAR TO
+                '%(nolotil|paracetamol|ibuprofeno|diazepam|lorazepam|buscapina|algidol|spasmoctyl|fortasec)%'
+                THEN 0.0 ELSE 1.0 END)*0.20
+              -(CASE WHEN conducta>=2 THEN 0.25 ELSE 0.0 END)
+              -(CASE WHEN LOWER(COALESCE(medicacion,'')) SIMILAR TO '%(diazepam|lorazepam)%'
+                THEN 0.10 ELSE 0.0 END)
+            )*5.0))
         )::numeric,2) AS avg_estado,
         ROUND(100.0*SUM(CASE WHEN conducta>0 THEN 1 ELSE 0 END)/COUNT(*),1) AS pct_picos,
         ROUND(AVG(CASE WHEN agua<3000 THEN agua END)) AS avg_agua
