@@ -797,17 +797,28 @@ def run_migration():
     try:
         db = psycopg2.connect(DATABASE_URL)
         cur = db.cursor()
+        # Añadir columna seq si no existe
         cur.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS seq INTEGER DEFAULT 1")
         db.commit()
+        # Eliminar índice antiguo sin seq
+        try:
+            cur.execute("DROP INDEX IF EXISTS reports_date_mediator_turn_key")
+            db.commit()
+        except: db.rollback()
+        try:
+            cur.execute("ALTER TABLE reports DROP CONSTRAINT IF EXISTS reports_date_mediator_turn_key")
+            db.commit()
+        except: db.rollback()
+        # Crear índice correcto con seq
         try:
             cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS reports_unique_seq ON reports(date,mediator,turn,seq)")
             db.commit()
-        except Exception as e2:
-            db.rollback()
-        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='reports' AND column_name='seq'")
-        seq_exists = cur.fetchone() is not None
+        except: db.rollback()
+        # Verificar estado
+        cur.execute("SELECT indexname FROM pg_indexes WHERE tablename='reports'")
+        indexes = [r[0] for r in cur.fetchall()]
         db.close()
-        return jsonify({'ok': True, 'seq_exists': seq_exists})
+        return jsonify({'ok': True, 'indexes': indexes})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
