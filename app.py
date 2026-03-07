@@ -789,6 +789,25 @@ def get_schema():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/admin/migrate', methods=['POST'])
+def run_migration():
+    pwd = request.headers.get('X-Admin-Password','') or request.args.get('pwd','')
+    if pwd != ADMIN_PASSWORD and pwd != API_PASSWORD:
+        return jsonify({'error':'No autorizado'}), 401
+    try:
+        db = psycopg2.connect(DATABASE_URL)
+        cur = db.cursor()
+        cur.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS seq INTEGER DEFAULT 1")
+        db.commit()
+        # Verificar que se creó
+        cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='reports' AND column_name='seq'")
+        exists = cur.fetchone() is not None
+        db.close()
+        return jsonify({'ok': True, 'seq_exists': exists})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
