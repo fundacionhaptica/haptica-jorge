@@ -789,7 +789,7 @@ def get_schema():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/admin/migrate', methods=['POST'])
+@app.route('/api/admin/migrate', methods=['GET', 'POST'])
 def run_migration():
     pwd = request.headers.get('X-Admin-Password','') or request.args.get('pwd','')
     if pwd != ADMIN_PASSWORD and pwd != API_PASSWORD:
