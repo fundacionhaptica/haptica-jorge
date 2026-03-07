@@ -15,7 +15,7 @@ MEDIATORS = {
     'elena','sophie','javier','luna','alba','karol','amalia','dulce','paula',
     'raúl','raul','ari','jeach','belen','belén','gregorioalexander','gregory',
     'eli','angela','ángela','mediadora','mediador','juanjo','nerea','sara',
-    'marta','andres','andrés','pablo','jorge mediador'
+    'marta','andres','andrés','pablo','jorge mediador','mapi'
 }
 
 MOOD_MAP = {
