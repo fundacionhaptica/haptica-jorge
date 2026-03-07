@@ -585,36 +585,46 @@ def admin_reload_seed():
     try:
         with open(seed_file, encoding='utf-8') as f:
             data = json.load(f)
+        if not data:
+            return jsonify({'error': 'seed.json vacío'}), 400
         db = psycopg2.connect(DATABASE_URL)
         cur = db.cursor()
-        cur.execute('DELETE FROM reports')
-        db.commit()
-        inserted = 0
+        # Preparar todos los registros ANTES de borrar nada
+        rows = []
         for r in data:
-            try:
-                cur.execute("""INSERT INTO reports
-                    (date,mediator,turn,seq,mood,conducta,estiramientos,agua,pis,estado,comunicacion,
-                     actividades,comidas,medicacion,notas,vocab,formato,body_preview,banyo)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (date,mediator,turn,seq) DO UPDATE SET
-                    mood=EXCLUDED.mood, conducta=EXCLUDED.conducta,
-                    agua=EXCLUDED.agua, notas=EXCLUDED.notas,
-                    body_preview=EXCLUDED.body_preview""",
-                    (r.get('date'), r.get('mediator',''),
-                     r.get('turn','sin especificar'), r.get('seq',1),
-                     r.get('mood','?'), r.get('conducta',0), r.get('estiramientos',0),
-                     r.get('agua'), r.get('pis'), r.get('estado',''),
-                     r.get('comunicacion',''), r.get('actividades',''),
-                     r.get('comidas',''), r.get('medicacion',''),
-                     r.get('notas',''), json.dumps(r.get('vocab',[]), ensure_ascii=False),
-                     r.get('formato','v1'), r.get('body_preview','')[:300],
-                     r.get('banyo','')))
-                if cur.rowcount > 0: inserted += 1
-            except: continue
-        db.commit()
+            rows.append((
+                r.get('date'), r.get('mediator',''),
+                r.get('turn','sin especificar'), int(r.get('seq') or 1),
+                r.get('mood','?'), int(r.get('conducta') or 0),
+                int(r.get('estiramientos') or 0),
+                int(r.get('agua')) if r.get('agua') else None,
+                int(r.get('pis')) if r.get('pis') else None,
+                r.get('estado',''), r.get('comunicacion',''),
+                r.get('actividades',''), r.get('comidas',''),
+                r.get('medicacion',''), r.get('notas',''),
+                json.dumps(r.get('vocab') or [], ensure_ascii=False),
+                r.get('formato','v1'), (r.get('body_preview') or '')[:300],
+                r.get('banyo','')
+            ))
+        # Ahora sí: borrar e insertar en lotes de 500
+        cur.execute('DELETE FROM reports')
+        SQL = """INSERT INTO reports
+            (date,mediator,turn,seq,mood,conducta,estiramientos,agua,pis,estado,comunicacion,
+             actividades,comidas,medicacion,notas,vocab,formato,body_preview,banyo)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (date,mediator,turn,seq) DO NOTHING"""
+        BATCH = 500
+        inserted = 0
+        for i in range(0, len(rows), BATCH):
+            batch = rows[i:i+BATCH]
+            psycopg2.extras.execute_batch(cur, SQL, batch, page_size=BATCH)
+            inserted += len(batch)
+            db.commit()
         cur.close(); db.close()
         return jsonify({'ok': True, 'total': len(data), 'inserted': inserted})
     except Exception as e:
+        try: db.rollback()
+        except: pass
         return jsonify({'error': str(e)}), 500
 
 
