@@ -799,11 +799,15 @@ def run_migration():
         cur = db.cursor()
         cur.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS seq INTEGER DEFAULT 1")
         db.commit()
-        # Verificar que se creó
+        try:
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS reports_unique_seq ON reports(date,mediator,turn,seq)")
+            db.commit()
+        except Exception as e2:
+            db.rollback()
         cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='reports' AND column_name='seq'")
-        exists = cur.fetchone() is not None
+        seq_exists = cur.fetchone() is not None
         db.close()
-        return jsonify({'ok': True, 'seq_exists': exists})
+        return jsonify({'ok': True, 'seq_exists': seq_exists})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
