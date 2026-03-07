@@ -769,6 +769,27 @@ def fix_raul_agua():
     return jsonify({'ok': True, 'updated': updated})
 
 
+@app.route('/api/admin/schema')
+def get_schema():
+    pwd = request.headers.get('X-Admin-Password','') or request.args.get('pwd','')
+    if pwd != ADMIN_PASSWORD and pwd != API_PASSWORD:
+        return jsonify({'error':'No autorizado'}), 401
+    try:
+        db = psycopg2.connect(DATABASE_URL)
+        cur = db.cursor()
+        cur.execute("""SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name='reports' 
+            ORDER BY ordinal_position""")
+        cols = [{'name': r[0], 'type': r[1]} for r in cur.fetchall()]
+        cur.execute("SELECT COUNT(*) FROM reports")
+        count = cur.fetchone()[0]
+        db.close()
+        return jsonify({'columns': cols, 'count': count})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
