@@ -139,7 +139,6 @@ def init_db():
             CREATE TABLE IF NOT EXISTS reports (
                 id SERIAL PRIMARY KEY, date DATE NOT NULL,
                 mediator TEXT NOT NULL, turn TEXT DEFAULT 'sin especificar',
-                seq INTEGER DEFAULT 1,
                 mood TEXT DEFAULT '?', conducta INTEGER DEFAULT 0,
                 estiramientos INTEGER DEFAULT 0, agua INTEGER, pis INTEGER,
                 banyo TEXT DEFAULT '', estado TEXT DEFAULT '',
@@ -149,7 +148,6 @@ def init_db():
                 formato TEXT DEFAULT 'v1', body_preview TEXT DEFAULT '',
                 created_at TIMESTAMPTZ DEFAULT NOW()
             );
-            ALTER TABLE reports ADD COLUMN IF NOT EXISTS seq INTEGER DEFAULT 1;
             ALTER TABLE reports ADD COLUMN IF NOT EXISTS banyo TEXT DEFAULT '';
             CREATE TABLE IF NOT EXISTS upload_log (
                 id SERIAL PRIMARY KEY, uploaded_at TIMESTAMPTZ DEFAULT NOW(),
@@ -169,17 +167,13 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_reports_mediator ON reports(mediator);
         """)
         db.commit()
-        # Migración: añadir seq si no existe y crear índice único correcto
-        try:
-            cur.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS seq INTEGER DEFAULT 1")
-            db.commit()
-        except: db.rollback()
+        # Columnas gestionadas via CREATE TABLE IF NOT EXISTS
         try:
             cur.execute("ALTER TABLE reports DROP CONSTRAINT IF EXISTS reports_date_mediator_turn_key")
             db.commit()
         except: db.rollback()
         try:
-            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS reports_unique_seq ON reports(date,mediator,turn,seq)")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS reports_unique ON reports(date,mediator,turn)")
             db.commit()
         except: db.rollback()
         cur.close(); db.close()
@@ -516,7 +510,7 @@ def seed():
                  banyo,estado,comunicacion,actividades,comidas,medicacion,
                  notas,vocab,formato,body_preview)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (date,mediator,turn,seq) DO NOTHING""",
+                ON CONFLICT (date,mediator,turn) DO NOTHING""",
                 (r.get('date'), med, r.get('turn','sin especificar'),
                  r.get('mood','?'), r.get('conducta',0), r.get('estiramientos',0),
                  r.get('agua'), r.get('pis'), r.get('banyo',''), r.get('estado',''),
@@ -596,7 +590,7 @@ def admin_reload_seed():
         for r in data:
             rows.append((
                 r.get('date'), r.get('mediator',''),
-                r.get('turn','sin especificar'), int(r.get('seq') or 1),
+                r.get('turn','sin especificar'),
                 r.get('mood','?'), int(r.get('conducta') or 0),
                 int(r.get('estiramientos') or 0),
                 int(r.get('agua')) if r.get('agua') else None,
@@ -611,10 +605,10 @@ def admin_reload_seed():
         # Ahora sí: borrar e insertar en lotes de 500
         cur.execute('DELETE FROM reports')
         SQL = """INSERT INTO reports
-            (date,mediator,turn,seq,mood,conducta,estiramientos,agua,pis,estado,comunicacion,
+            (date,mediator,turn,mood,conducta,estiramientos,agua,pis,estado,comunicacion,
              actividades,comidas,medicacion,notas,vocab,formato,body_preview,banyo)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (date,mediator,turn,seq) DO NOTHING"""
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (date,mediator,turn) DO NOTHING"""
         BATCH = 500
         inserted = 0
         for i in range(0, len(rows), BATCH):
