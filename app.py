@@ -1,7 +1,7 @@
 import os, json
 from functools import wraps
 from datetime import datetime
-from flask import Flask, request, jsonify, g, send_file
+from flask import Flask, request, jsonify, send_from_directory, g, send_file
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -821,6 +821,15 @@ def run_migration():
         return jsonify({'ok': True, 'indexes': indexes})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/guia')
+def descargar_guia():
+    import os
+    static_dir = os.path.join(os.path.dirname(__file__), 'static')
+    return send_from_directory(static_dir, 'guia_dashboard.pdf',
+                               as_attachment=False,
+                               download_name='Guia_Dashboard_Jorge_HAPTICA.pdf')
 
 
 if __name__ == '__main__':
