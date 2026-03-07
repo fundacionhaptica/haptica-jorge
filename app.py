@@ -149,6 +149,8 @@ def init_db():
                 formato TEXT DEFAULT 'v1', body_preview TEXT DEFAULT '',
                 created_at TIMESTAMPTZ DEFAULT NOW()
             );
+            ALTER TABLE reports ADD COLUMN IF NOT EXISTS seq INTEGER DEFAULT 1;
+            ALTER TABLE reports ADD COLUMN IF NOT EXISTS banyo TEXT DEFAULT '';
             CREATE TABLE IF NOT EXISTS upload_log (
                 id SERIAL PRIMARY KEY, uploaded_at TIMESTAMPTZ DEFAULT NOW(),
                 total_in_file INTEGER, new_inserted INTEGER, duplicates INTEGER,
