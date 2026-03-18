@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin v3 — Fundación Háptica</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f5f4f0; color: #1a1a1a; font-size: 14px; padding: 24px; }
+  h1 { font-size: 18px; font-weight: 500; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 13px; margin-bottom: 24px; }
+  .card { background: #fff; border: 1px solid #e0ddd5; border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #333; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .stat { background: #f5f4f0; border-radius: 8px; padding: 10px 14px; }
+  .stat-num { font-size: 22px; font-weight: 500; }
+  .stat-lbl { font-size: 11px; color: #888; margin-top: 2px; }
+  .ok { color: #2a9d60; }
+  .warn { color: #e07b00; }
+  .err { color: #c44; }
+  button { padding: 9px 18px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .btn-primary { background: #1a1a2e; color: #fff; }
+  .btn-primary:hover { background: #2a2a4e; }
+  .btn-primary:disabled { background: #999; cursor: not-allowed; }
+  .btn-danger { background: #c44; color: #fff; }
+  .btn-secondary { background: #fff; color: #444; border: 1px solid #ccc; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .progress-wrap { background: #eee; border-radius: 6px; height: 10px; margin: 12px 0; overflow: hidden; }
+  .progress-fill { background: #1a9d60; height: 10px; border-radius: 6px; transition: width 0.5s; }
+  .progress-fill.running { background: #3399ff; }
+  .progress-fill.error { background: #c44; }
+  .log { background: #1a1a2e; color: #aef; font-family: monospace; font-size: 11px; border-radius: 8px; padding: 12px; max-height: 220px; overflow-y: auto; white-space: pre-wrap; }
+  .alert { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
+  .alert-info { background: #eef5ff; border: 1px solid #bcd; color: #336; }
+  .alert-success { background: #f0fff4; border: 1px solid #bdb; color: #363; }
+  .alert-error { background: #fff0f0; border: 1px solid #dbb; color: #633; }
+  input[type=text], input[type=number], input[type=password] {
+    padding: 7px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; width: 100%; margin-bottom: 8px;
+  }
+  label { font-size: 12px; color: #555; display: block; margin-bottom: 3px; }
+  .inline-form { display: flex; gap: 8px; align-items: flex-end; }
+  .inline-form div { flex: 1; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+  .badge-running { background: #ddf; color: #339; }
+  .badge-done { background: #dfd; color: #363; }
+  .badge-idle { background: #eee; color: #666; }
+</style>
+</head>
+<body>
+
+<h1>Panel Admin v3 — Fundación Háptica</h1>
+<p class="subtitle">Gestión de <code>reports_v3</code> · Parser IA con Gemini Flash</p>
+
+<div id="authBlock" class="card">
+  <h2>Autenticación</h2>
+  <div class="inline-form">
+    <div>
+      <label>URL base del dashboard (ej: https://mediacion-jorge-espana.up.railway.app)</label>
+      <input type="text" id="baseUrl" value="https://mediacion-jorge-espana.up.railway.app" />
+    </div>
+    <div>
+      <label>Contraseña</label>
+      <input type="password" id="apiPass" value="haptica2025" />
+    </div>
+    <button class="btn-primary" onclick="checkConnection()">Conectar</button>
+  </div>
+  <div id="connStatus"></div>
+</div>
+
+<div id="mainPanel" style="display:none;">
+
+  <div class="card">
+    <h2>Estado de reports_v3</h2>
+    <div class="stat-grid" id="statsGrid">
+      <div class="stat"><div class="stat-num" id="s-total">—</div><div class="stat-lbl">Total registros</div></div>
+      <div class="stat"><div class="stat-num ok" id="s-ok">—</div><div class="stat-lbl">Sin errores</div></div>
+      <div class="stat"><div class="stat-num err" id="s-err">—</div><div class="stat-lbl">Con error parseo</div></div>
+      <div class="stat"><div class="stat-num" id="s-mediators">—</div><div class="stat-lbl">Mediadores</div></div>
+      <div class="stat"><div class="stat-num" id="s-datemin">—</div><div class="stat-lbl">Desde</div></div>
+      <div class="stat"><div class="stat-num" id="s-datemax">—</div><div class="stat-lbl">Hasta</div></div>
+    </div>
+    <button class="btn-secondary" onclick="loadStats()">Actualizar stats</button>
+  </div>
+
+  <div class="card">
+    <h2>Reparseo masivo <span id="reparseBadge" class="badge badge-idle">Inactivo</span></h2>
+    <div class="alert alert-info">
+      Lee todos los <code>body_preview</code> de <code>reports</code>, los envía a Gemini Flash y guarda en <code>reports_v3</code>.
+      A ~0.6s por informe, 4.725 informes tardan ~47 minutos. Puedes cerrar esta pestaña — corre en background en Railway.
+    </div>
+
+    <div class="progress-wrap"><div class="progress-fill" id="progressBar" style="width:0%"></div></div>
+    <div id="progressText" style="font-size:12px; color:#666; margin-bottom:12px;">Sin iniciar</div>
+
+    <div class="btn-row">
+      <div>
+        <label>Límite de registros (0 = todos)</label>
+        <input type="number" id="reparseLimit" value="0" style="width:100px; margin:0;" min="0" />
+      </div>
+      <button class="btn-primary" id="btnStartReparse" onclick="startReparse()">Iniciar reparseo</button>
+      <button class="btn-secondary" onclick="checkReparseStatus()">Actualizar estado</button>
+    </div>
+    <div id="reparseLog" class="log" style="margin-top:12px; display:none;"></div>
+  </div>
+
+  <div class="card">
+    <h2>Parsear un mensaje individual</h2>
+    <label>Texto del mensaje WhatsApp</label>
+    <textarea id="singleMsg" style="width:100%; height:120px; border:1px solid #ccc; border-radius:6px; padding:8px; font-size:12px; font-family:monospace; resize:vertical; margin-bottom:8px;"></textarea>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="parseOne()">Parsear y guardar en v3</button>
+    </div>
+    <div id="singleResult" style="margin-top:12px;"></div>
+  </div>
+
+  <div class="card">
+    <h2>Últimos 10 registros de reports_v3</h2>
+    <div id="recentRecords"><div style="color:#bbb;">Carga las stats primero.</div></div>
+    <button class="btn-secondary" style="margin-top:10px;" onclick="loadRecent()">Cargar últimos registros</button>
+  </div>
+
+</div>
+
+<script>
+let BASE_URL = '';
+let PASS = '';
+let statusInterval = null;
+
+function headers() {
+  return {
+    'Content-Type': 'application/json',
+    'X-Password': PASS,
+    'Authorization': 'Bearer ' + PASS,
+  };
+}
+
+async function api(path, method='GET', body=null) {
+  const opts = { method, headers: headers() };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(BASE_URL + path, opts);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+async function checkConnection() {
+  BASE_URL = document.getElementById('baseUrl').value.replace(/\/$/, '');
+  PASS = document.getElementById('apiPass').value;
+  const el = document.getElementById('connStatus');
+  try {
+    const data = await api('/api/v3/stats');
+    el.innerHTML = '<div class="alert alert-success">Conectado. reports_v3 tiene ' + data.total + ' registros.</div>';
+    document.getElementById('mainPanel').style.display = 'block';
+    loadStats();
+    checkReparseStatus();
+  } catch(e) {
+    el.innerHTML = '<div class="alert alert-error">Error: ' + e.message + '. Comprueba URL y contraseña.</div>';
+  }
+}
+
+async function loadStats() {
+  try {
+    const d = await api('/api/v3/stats');
+    document.getElementById('s-total').textContent = d.total || 0;
+    document.getElementById('s-ok').textContent = d.ok || 0;
+    document.getElementById('s-err').textContent = d.errors || 0;
+    document.getElementById('s-mediators').textContent = d.mediators || 0;
+    document.getElementById('s-datemin').textContent = d.date_min || '—';
+    document.getElementById('s-datemax').textContent = d.date_max || '—';
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+async function startReparse() {
+  const limit = parseInt(document.getElementById('reparseLimit').value) || 0;
+  const btn = document.getElementById('btnStartReparse');
+  btn.disabled = true;
+  btn.textContent = 'Iniciando...';
+  try {
+    await api('/api/v3/reparse-all', 'POST', { limit });
+    log('Reparseo iniciado en background.');
+    document.getElementById('reparseLog').style.display = 'block';
+    startPolling();
+  } catch(e) {
+    log('Error al iniciar: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Iniciar reparseo';
+  }
+}
+
+async function checkReparseStatus() {
+  try {
+    const s = await api('/api/v3/reparse-status');
+    updateProgress(s);
+  } catch(e) {}
+}
+
+function updateProgress(s) {
+  const bar = document.getElementById('progressBar');
+  const txt = document.getElementById('progressText');
+  const badge = document.getElementById('reparseBadge');
+  const btn = document.getElementById('btnStartReparse');
+  const pct = s.percent || 0;
+
+  bar.style.width = pct + '%';
+  bar.className = 'progress-fill' + (s.running ? ' running' : (s.errors > 0 ? ' error' : ''));
+
+  if (s.running) {
+    badge.className = 'badge badge-running';
+    badge.textContent = 'En curso';
+    btn.disabled = true;
+    txt.textContent = s.done + ' / ' + s.total + ' (' + pct + '%) — ' + s.errors + ' errores';
+    if (s.last_error) log('Último error: ' + s.last_error);
+  } else if (s.total > 0) {
+    badge.className = 'badge badge-done';
+    badge.textContent = 'Completado';
+    btn.disabled = false;
+    btn.textContent = 'Iniciar reparseo';
+    txt.textContent = 'Completado: ' + s.done + '/' + s.total + ' registros (' + s.errors + ' errores). Finalizado: ' + (s.finished_at || '');
+    stopPolling();
+    loadStats();
+  }
+}
+
+function startPolling() {
+  if (statusInterval) clearInterval(statusInterval);
+  statusInterval = setInterval(checkReparseStatus, 3000);
+}
+
+function stopPolling() {
+  if (statusInterval) { clearInterval(statusInterval); statusInterval = null; }
+}
+
+function log(msg) {
+  const el = document.getElementById('reparseLog');
+  el.style.display = 'block';
+  el.textContent += new Date().toLocaleTimeString('es-ES') + ' — ' + msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+async function parseOne() {
+  const text = document.getElementById('singleMsg').value.trim();
+  if (!text) { alert('Pega un mensaje primero.'); return; }
+  const el = document.getElementById('singleResult');
+  el.innerHTML = '<div class="alert alert-info">Parseando...</div>';
+  try {
+    const res = await api('/api/v3/parse-one', 'POST', { text });
+    const p = res.parsed;
+    el.innerHTML = '<div class="alert alert-success">Guardado en reports_v3.</div>' +
+      '<pre style="font-size:11px; background:#f5f4f0; padding:10px; border-radius:6px; overflow:auto;">' +
+      JSON.stringify(p, null, 2) + '</pre>';
+    loadStats();
+  } catch(e) {
+    el.innerHTML = '<div class="alert alert-error">Error: ' + e.message + '</div>';
+  }
+}
+
+async function loadRecent() {
+  const el = document.getElementById('recentRecords');
+  try {
+    const res = await api('/api/v3/reports?per_page=10');
+    if (!res.data || res.data.length === 0) {
+      el.innerHTML = '<div style="color:#bbb;">Sin registros aún.</div>';
+      return;
+    }
+    el.innerHTML = res.data.map(r =>
+      `<div style="border:1px solid #e0ddd5; border-radius:6px; padding:10px; margin-bottom:8px;">
+        <div style="display:flex; gap:12px; font-size:12px; color:#888; margin-bottom:4px;">
+          <span>${r.date || '?'}</span>
+          <span>${r.mediator || '?'}</span>
+          <span>${r.turn || '?'}</span>
+          <span style="color:${r.parse_error ? '#c44' : '#2a9d60'}">${r.parse_error ? '⚠ error' : '✓ ok'}</span>
+        </div>
+        <div style="font-size:12px;">
+          <strong>Estado:</strong> ${r.estado || '—'} |
+          <strong>Autoagr.:</strong> ${r.autoagresiones ?? '—'} |
+          <strong>Aleteos:</strong> ${r.aleteos ?? '—'} |
+          <strong>Agua:</strong> ${r.agua_ml ? r.agua_ml + 'ml' : '—'}
+        </div>
+      </div>`
+    ).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="alert alert-error">' + e.message + '</div>';
+  }
+}
+</script>
+</body>
+</html>
