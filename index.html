@@ -544,7 +544,7 @@ function renderOverview() {
   el.innerHTML = `
     <div class="kpi-grid">
       <div class="kpi"><div class="kpi-val">${(s.total||0).toLocaleString()}</div><div class="kpi-label">Informes totales</div></div>
-      <div class="kpi"><div class="kpi-val">${s.avg_mood||'—'}</div><div class="kpi-label">Ánimo medio (1-4)</div></div>
+      <div class="kpi"><div class="kpi-val" style="color:#7c3aed">${monthly.length?parseFloat(monthly.reduce(function(a,b){return a+(parseFloat(b.avg_estado)||0);},0)/monthly.filter(function(m){return m.avg_estado!=null;}).length).toFixed(2):'—'}</div><div class="kpi-label">Estado medio (0-5)</div><div class="kpi-sub">Score ponderado</div></div>
       <div class="kpi"><div class="kpi-val">${pct_pos}%</div><div class="kpi-label">Días positivos</div></div>
       <div class="kpi"><div class="kpi-val">${pct_ok}%</div><div class="kpi-label">Días sin picos</div></div>
     </div>
@@ -754,7 +754,6 @@ function renderMediatorSummary() {
         '<td style="padding:8px 10px;font-weight:600;font-size:.83rem;color:#1e293b">'+m.mediator+'</td>'+
         '<td style="padding:8px 10px;text-align:center;font-size:.78rem;color:#64748b">'+m.total+'</td>'+
         '<td style="padding:8px 10px;font-size:.78rem;color:#64748b">'+desde+' – '+hasta+'</td>'+
-        '<td style="padding:8px 10px">'+miniBar(m.avg_mood_med, maxMood, '#2A7F7F')+'</td>'+
         '<td style="padding:8px 10px">'+estadoLabel(m.avg_estado)+'</td>'+
         '</tr>';
     }).join('');
@@ -765,13 +764,12 @@ function renderMediatorSummary() {
           '<th style="text-align:left;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600">Mediador/a</th>'+
           '<th style="text-align:center;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600">Informes</th>'+
           '<th style="text-align:left;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600">Período</th>'+
-          '<th style="text-align:left;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600" title="Valoración directa del mediador (1-4)">Ánimo mediador</th>'+
-          '<th style="text-align:left;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600" title="Score ponderado: ánimo 45% + conducta 35% + medicación 20%">Estado calculado (0-5)</th>'+
+          '<th style="text-align:left;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600" title="Score ponderado: ánimo 45% + conducta 35% + medicación 20%">Estado (0-5)</th>'+
         '</tr></thead>'+
         '<tbody>'+rows+'</tbody>'+
       '</table>'+
       '<div style="margin-top:8px;padding:6px 10px;font-size:.72rem;color:#94a3b8">'+
-        '* Ánimo mediador: puntuación directa del mediador (1-4) · Estado calculado: fórmula ponderada propia (0-5)'+
+        '* Estado (0-5): score ponderado — ánimo mediador 45% · ausencia conducta 35% · sin medicación rescate 20%'+
       '</div>';
   }).catch(function(e){ if(el) el.innerHTML = '<p style="color:#dc2626;font-size:.82rem">Error: '+e.message+'</p>'; });
 }
@@ -855,17 +853,44 @@ function renderMoodChart(monthly) {
     if(closest) showHitoInfo(closest, e.clientX, e.clientY);
     else if(hitoPanel) { hitoPanel.remove(); hitoPanel=null; }
   };
-  charts['mood'] = new Chart(document.getElementById('ch-mood').getContext('2d'),{
+  // Zoom: mostrar últimos 24 meses por defecto, scroll para ver más
+  var defaultWindow = 24;
+  var zoomMin = Math.max(0, labels.length - defaultWindow);
+  var zoomMax = labels.length - 1;
+
+  var moodChartEl = document.getElementById('ch-mood');
+  // Wrapper con scroll horizontal
+  var moodWrapper = moodChartEl.parentElement;
+  moodWrapper.style.overflowX = 'auto';
+  moodWrapper.style.overflowY = 'hidden';
+  moodWrapper.style.cursor = 'grab';
+  var minWidth = Math.max(600, labels.length * 18);
+  moodChartEl.style.width = minWidth + 'px';
+  moodChartEl.style.minWidth = minWidth + 'px';
+
+  // Drag para scroll
+  (function(){
+    var isDown=false, startX, scrollLeft;
+    moodWrapper.addEventListener('mousedown',function(e){isDown=true;startX=e.pageX-moodWrapper.offsetLeft;scrollLeft=moodWrapper.scrollLeft;moodWrapper.style.cursor='grabbing';});
+    moodWrapper.addEventListener('mouseleave',function(){isDown=false;moodWrapper.style.cursor='grab';});
+    moodWrapper.addEventListener('mouseup',function(){isDown=false;moodWrapper.style.cursor='grab';});
+    moodWrapper.addEventListener('mousemove',function(e){if(!isDown)return;e.preventDefault();var x=e.pageX-moodWrapper.offsetLeft;var walk=(x-startX)*1.2;moodWrapper.scrollLeft=scrollLeft-walk;});
+  })();
+
+  // Scroll al final (datos más recientes) por defecto
+  setTimeout(function(){ moodWrapper.scrollLeft = moodWrapper.scrollWidth; }, 100);
+
+  charts['mood'] = new Chart(moodChartEl.getContext('2d'),{
     type:'line', plugins:[eventPlugin],
     data:{labels:labels,datasets:[
-      {label:'Ánimo (1-4)',data:data,borderColor:'#2A7F7F',backgroundColor:'rgba(42,127,127,.1)',tension:.4,fill:true,pointRadius:2,spanGaps:true,yAxisID:'y'},
-      {label:'Estado medio (0-5)',data:estadoData,borderColor:'#7c3aed',backgroundColor:'rgba(124,58,237,0)',tension:.4,fill:false,pointRadius:2,spanGaps:true,borderDash:[4,3],borderWidth:2,yAxisID:'yE'}
+      {label:'Estado medio (0-5)',data:estadoData,borderColor:'#7c3aed',backgroundColor:'rgba(124,58,237,.12)',tension:.4,fill:true,pointRadius:3,pointHoverRadius:5,spanGaps:true,borderWidth:2.5}
     ]},
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:true,position:'bottom',labels:{font:{size:10},boxWidth:20}}},
+    options:{responsive:false,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){var v=ctx.raw;if(v==null)return'Sin datos';var emojis=['😤','😟','😐','🙂','😊','😄'];return'Estado: '+v.toFixed(2)+' '+( emojis[Math.round(v)]||'');}}}} ,
       scales:{
-        y:{min:1,max:4,position:'left',ticks:{callback:function(v){return [,'😔','😐','😊','😄'][Math.round(v)]||v;}}},
-        yE:{min:0,max:5,position:'right',grid:{drawOnChartArea:false},ticks:{callback:function(v){return ['😤','😟','😐','🙂','😊','😄'][Math.round(v)]||v;}},title:{display:true,text:'Estado (0-5)',color:'#7c3aed',font:{size:9}}},
+        y:{min:0,max:5,position:'left',
+          ticks:{callback:function(v){return ['😤','😟','😐','🙂','😊','😄'][Math.round(v)]||v;},font:{size:10}},
+          grid:{color:'rgba(0,0,0,.05)'}},
         x:{ticks:{font:{size:8},maxRotation:45}}
       }
     }
