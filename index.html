@@ -248,7 +248,8 @@ tbody td{padding:6px 10px;vertical-align:middle}
     <button class="btn-hdr" onclick="location.href='/pai'">📋 PAI</button>
     <button class="btn-hdr" onclick="openAnnotations()" style="background:rgba(255,255,255,.13)">📌 Anotaciones</button>
     <button class="btn-hdr" onclick="openUpload()">📂 Actualizar datos</button>
-    <button class="btn-hdr" onclick="openAdmin()" style="background:rgba(255,255,255,.08);font-size:.75rem">⚙️</button>
+    <button class="btn-hdr" onclick="openTraining()" style="background:rgba(124,58,237,.35);border-color:rgba(167,139,250,.5)">🤖 Entrenamiento IA</button>
+    <button class="btn-hdr" onclick="openAdmin()" style="background:rgba(255,255,255,.08);font-size:.75rem" title="Mantenimiento">⚙️</button>
     <a href="/guia" target="_blank" class="btn-hdr" style="text-decoration:none" title="Guía técnica del dashboard">📄 Guía</a>
     <button class="btn-hdr" onclick="logout()">↩ Salir</button>
   </div>
@@ -1055,7 +1056,13 @@ function setProgress(pct, label) {
 }
 
 function handleUpload(file) {
-  if (!file || !file.name.endsWith('.txt')) { alert('Sube un archivo .txt exportado de WhatsApp'); return; }
+  if (!file) { alert('No se ha seleccionado archivo'); return; }
+  if (!file.name.endsWith('.txt') && !file.name.endsWith('.TXT')) {
+    alert('Sube un archivo .txt exportado de WhatsApp'); return;
+  }
+  document.getElementById('upload-result').style.display='none';
+  document.getElementById('upload-result').classList.remove('error');
+  document.getElementById('btn-reload').style.display='none';
   document.getElementById('prog-wrap').style.display='block';
   setProgress(20,'Subiendo archivo...');
   var formData = new FormData();
@@ -1064,29 +1071,40 @@ function handleUpload(file) {
   fetch(API_URL+'/api/upload', {method:'POST',headers:{'X-Password':API_PWD},body:formData})
     .then(function(r){
       setProgress(90,'Finalizando...');
-      if(!r.ok && r.status !== 200) throw new Error('HTTP '+r.status);
-      return r.text();
+      return r.text().then(function(txt){ return {status: r.status, txt: txt}; });
     })
-    .then(function(txt){
+    .then(function(res){
       var d;
-      try { d = JSON.parse(txt); } catch(e) { throw new Error('Respuesta no válida: '+txt.slice(0,80)); }
+      try { d = JSON.parse(res.txt); } catch(e) {
+        throw new Error('Respuesta inesperada del servidor ('+res.status+'): '+res.txt.slice(0,120));
+      }
+      if(res.status !== 200 && !d.ok) throw new Error(d.error || 'Error HTTP '+res.status);
       setProgress(100,'Listo');
-      var res=document.getElementById('upload-result');
-      res.style.display='block'; res.classList.toggle('error',!d.ok);
+      var el=document.getElementById('upload-result');
+      el.style.display='block'; el.classList.remove('error');
       if(d.ok){
-        document.getElementById('ur1').innerHTML='📊 Total: <b>'+d.total_in_file+'</b>';
-        document.getElementById('ur2').innerHTML='✅ Nuevos: <b>'+d.new_inserted+'</b>';
-        document.getElementById('ur3').innerHTML='♻️ Duplicados: <b>'+d.duplicates+'</b>';
-        document.getElementById('ur4').innerHTML='📅 Rango: <b>'+d.date_from+' → '+d.date_to+'</b>';
+        document.getElementById('ur1').innerHTML='📊 Informes detectados: <b>'+d.total_in_file+'</b>';
+        document.getElementById('ur2').innerHTML='✅ Nuevos insertados: <b>'+d.new_inserted+'</b>';
+        document.getElementById('ur3').innerHTML='♻️ Duplicados ignorados: <b>'+d.duplicates+'</b>';
+        document.getElementById('ur4').innerHTML='📅 Rango: <b>'+(d.date_from||'—')+' → '+(d.date_to||'—')+'</b>';
         if(d.new_inserted>0) document.getElementById('btn-reload').style.display='block';
+        if(d.total_in_file===0){
+          el.classList.add('error');
+          document.getElementById('ur1').innerHTML='⚠️ El archivo no contiene informes reconocibles. Comprueba que es un export de WhatsApp con formato <b>[DD/MM/YYYY, HH:MM:SS]</b> y que los mensajes tienen más de 80 caracteres.';
+        }
       } else {
-        document.getElementById('ur1').innerHTML='❌ Error: '+d.error;
+        el.classList.add('error');
+        document.getElementById('ur1').innerHTML='❌ Error: '+(d.error||'desconocido');
       }
     })
     .catch(function(e){
-      var res=document.getElementById('upload-result');
-      res.style.display='block'; res.classList.add('error');
-      document.getElementById('ur1').innerHTML='❌ Error: '+e.message;
+      setProgress(0,'');
+      var el=document.getElementById('upload-result');
+      el.style.display='block'; el.classList.add('error');
+      document.getElementById('ur1').innerHTML='❌ '+e.message;
+      document.getElementById('ur2').innerHTML='';
+      document.getElementById('ur3').innerHTML='';
+      document.getElementById('ur4').innerHTML='';
     });
 }
 
@@ -1357,6 +1375,204 @@ function deleteAnnotation(id) {
 
 function openAdmin() { document.getElementById('admin-modal').classList.add('open'); }
 
+// ── ENTRENAMIENTO IA ──────────────────────────────────────────────────────────
+var _trSelected = null;
+var _trCorrections = JSON.parse(localStorage.getItem('haptica_corrections') || '[]');
+
+function openTraining() {
+  var modal = document.getElementById('training-modal');
+  modal.classList.add('open');
+  // Poblar selector mediadores
+  var sel = document.getElementById('tr-mediator');
+  sel.innerHTML = '<option value="">Todos</option>' +
+    MEDIATORS.map(function(m){return '<option value="'+m+'">'+m+'</option>';}).join('');
+  loadCorrections();
+}
+
+function closeTraining() {
+  document.getElementById('training-modal').classList.remove('open');
+}
+
+function trainSearch() {
+  var mediator = document.getElementById('tr-mediator').value;
+  var date = document.getElementById('tr-date').value;
+  var el = document.getElementById('tr-results');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Buscando...</div>';
+
+  var q = '';
+  if(mediator) q += 'mediator='+encodeURIComponent(mediator)+'&';
+  if(date) q += 'from='+date+'&to='+date+'&';
+
+  apiFetch('/api/v3/reports?per_page=20&'+(q||'page=1'))
+    .then(function(r){return r.json();})
+    .then(function(d){
+      var items = d.data || d.reports || [];
+      if(!items.length) {
+        // Fallback a reports v1 si v3 vacío
+        return apiFetch('/api/reports?'+(q||'')).then(function(r){return r.json();})
+          .then(function(d2){return d2.reports||[];});
+      }
+      return items;
+    })
+    .then(function(items){
+      if(!items.length) {
+        el.innerHTML = '<div style="color:#94a3b8;font-size:.82rem;text-align:center;padding:1rem">Sin resultados. Prueba otros filtros.</div>';
+        return;
+      }
+      el.innerHTML = items.map(function(r,i){
+        var hasV3 = r.autoagresiones != null || r.desayuno != null;
+        return '<div onclick="selectTrainingReport('+i+',this)" data-idx="'+i+'" style="cursor:pointer;padding:.6rem .9rem;border:1.5px solid #e5e7eb;border-radius:8px;margin-bottom:.3rem;font-size:.8rem;transition:all .12s;background:#fff">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center">' +
+            '<span style="font-weight:600;color:#1e293b">'+(r.date||'—')+'</span>' +
+            '<span style="color:#64748b">'+(r.mediator||r.mediador||'—')+'</span>' +
+            '<span style="color:#94a3b8">'+(r.turn||r.turno||'—')+'</span>' +
+            '<span style="font-size:.7rem;padding:2px 6px;border-radius:10px;background:'+(hasV3?'#f0fdf4':'#fef9c3')+';color:'+(hasV3?'#16a34a':'#92400e')+'">'+(hasV3?'✓ V3':'Solo v1')+'</span>' +
+          '</div>' +
+          '<div style="color:#94a3b8;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r.body_preview||'').slice(0,80)+'</div>' +
+        '</div>';
+      }).join('');
+      // Guardar items en estado
+      window._trItems = items;
+    })
+    .catch(function(e){
+      el.innerHTML = '<div style="color:#dc2626;font-size:.82rem">Error: '+e.message+'</div>';
+    });
+}
+
+function selectTrainingReport(idx, el) {
+  document.querySelectorAll('#tr-results > div').forEach(function(d){
+    d.style.borderColor='#e5e7eb'; d.style.background='#fff';
+  });
+  el.style.borderColor='#7c3aed'; el.style.background='#f5f3ff';
+
+  var r = (window._trItems||[])[idx];
+  if(!r) return;
+  _trSelected = r;
+
+  var panel = document.getElementById('tr-correction-panel');
+  panel.style.display='block';
+
+  // Texto original
+  document.getElementById('tr-original-text').textContent = r.body_preview || '(sin preview)';
+
+  // Resultado IA
+  var iaFields = ['mediador','fecha','turno','pis','caca','agua_ml','sueno_horas','autoagresiones','agresiones_mediador','agresiones_terceros','aleteos','desayuno','almuerzo','comida','merienda','cena','medicacion','estado','actividad','vocabulario','observaciones'];
+  var iaHTML = iaFields.map(function(f){
+    var v = r[f] != null ? r[f] : (r[f.replace('_ml','')]!=null?r[f.replace('_ml','')]:null);
+    if(v == null) return '';
+    return '<div style="display:flex;gap:.3rem"><span style="color:#7c3aed;font-weight:600;min-width:100px">'+f+':</span><span style="color:#374151">'+v+'</span></div>';
+  }).filter(Boolean).join('') || '<span style="color:#94a3b8">Sin datos V3 para este informe</span>';
+  document.getElementById('tr-ia-result').innerHTML = iaHTML;
+
+  // Campos editables
+  var editFields = [
+    {k:'estado',label:'Estado ánimo',hint:'positivo / neutro...'},
+    {k:'autoagresiones',label:'Autoagresiones',hint:'número'},
+    {k:'agresiones_mediador',label:'Agres. mediador',hint:'número'},
+    {k:'agresiones_terceros',label:'Agres. terceros',hint:'número'},
+    {k:'aleteos',label:'Aleteos',hint:'número'},
+    {k:'agua_ml',label:'Agua (ml)',hint:'ej: 1000'},
+    {k:'pis',label:'Pis',hint:'número'},
+    {k:'caca',label:'Caca',hint:'0 o 1'},
+    {k:'desayuno',label:'Desayuno',hint:'descripción'},
+    {k:'almuerzo',label:'Almuerzo',hint:'descripción'},
+    {k:'comida',label:'Comida',hint:'descripción'},
+    {k:'merienda',label:'Merienda',hint:'descripción'},
+    {k:'cena',label:'Cena',hint:'descripción'},
+    {k:'actividad',label:'Actividad',hint:'descripción'},
+    {k:'vocabulario',label:'Vocabulario',hint:'palabras'},
+    {k:'observaciones',label:'Observaciones',hint:'texto libre'},
+  ];
+  document.getElementById('tr-fields').innerHTML = editFields.map(function(f){
+    return '<div><div style="font-size:.7rem;color:#6b7280;margin-bottom:2px">'+f.label+'</div>' +
+      '<input type="text" id="trf-'+f.k+'" placeholder="'+f.hint+'" style="width:100%;padding:5px 8px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:.78rem;font-family:inherit"></div>';
+  }).join('');
+  document.getElementById('tr-save-msg').textContent = '';
+}
+
+function saveCorrection() {
+  if(!_trSelected) return;
+  var editFields = ['estado','autoagresiones','agresiones_mediador','agresiones_terceros','aleteos','agua_ml','pis','caca','desayuno','almuerzo','comida','merienda','cena','actividad','vocabulario','observaciones'];
+  var corrections = {};
+  editFields.forEach(function(f){
+    var v = document.getElementById('trf-'+f);
+    if(v && v.value.trim()) corrections[f] = v.value.trim();
+  });
+  if(!Object.keys(corrections).length) {
+    document.getElementById('tr-save-msg').style.color='#dc2626';
+    document.getElementById('tr-save-msg').textContent='Rellena al menos un campo para corregir';
+    return;
+  }
+  var entry = {
+    id: Date.now(),
+    date: _trSelected.date || _trSelected.fecha,
+    mediator: _trSelected.mediator || _trSelected.mediador,
+    turn: _trSelected.turn || _trSelected.turno,
+    original_preview: (_trSelected.body_preview||'').slice(0,200),
+    corrections: corrections,
+    note: document.getElementById('tr-note').value.trim(),
+    saved_at: new Date().toISOString()
+  };
+  _trCorrections.push(entry);
+  localStorage.setItem('haptica_corrections', JSON.stringify(_trCorrections));
+
+  document.getElementById('tr-save-msg').style.color='#16a34a';
+  document.getElementById('tr-save-msg').textContent='✅ Corrección guardada ('+_trCorrections.length+' total)';
+  // Limpiar campos
+  document.querySelectorAll('#tr-fields input').forEach(function(i){i.value='';});
+  document.getElementById('tr-note').value='';
+  loadCorrections();
+}
+
+function loadCorrections() {
+  _trCorrections = JSON.parse(localStorage.getItem('haptica_corrections') || '[]');
+  var el = document.getElementById('tr-corrections-list');
+  if(!el) return;
+  if(!_trCorrections.length) {
+    el.innerHTML = '<span style="color:#94a3b8">Sin correcciones guardadas todavía</span>';
+    return;
+  }
+  el.innerHTML = _trCorrections.slice().reverse().slice(0,10).map(function(c){
+    var fields = Object.keys(c.corrections).map(function(k){
+      return '<span style="background:#ede9fe;color:#5b21b6;border-radius:4px;padding:1px 5px;margin-right:3px;font-size:.72rem">'+k+': '+c.corrections[k]+'</span>';
+    }).join('');
+    return '<div style="border:1px solid #e5e7eb;border-radius:7px;padding:.5rem .8rem;margin-bottom:.4rem;background:#fafafa">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.2rem">' +
+        '<span style="font-weight:600;font-size:.8rem;color:#1e293b">'+(c.date||'—')+' · '+(c.mediator||'—')+'</span>' +
+        '<span style="font-size:.7rem;color:#94a3b8">'+(c.saved_at||'').slice(0,10)+'</span>' +
+        '<button onclick="deleteCorrection('+c.id+')" style="background:#fee2e2;color:#dc2626;border:none;border-radius:5px;padding:1px 6px;font-size:.7rem;cursor:pointer">✕</button>' +
+      '</div>' +
+      '<div>'+fields+'</div>' +
+      (c.note?'<div style="font-size:.73rem;color:#6b7280;margin-top:2px">📝 '+c.note+'</div>':'') +
+    '</div>';
+  }).join('') +
+  ((_trCorrections.length>10)?'<div style="font-size:.72rem;color:#94a3b8;text-align:center">... y '+(_trCorrections.length-10)+' más guardadas</div>':'') +
+  '<div style="margin-top:.5rem;display:flex;gap:.5rem">' +
+    '<button onclick="exportCorrections()" style="font-size:.75rem;padding:5px 10px;border-radius:6px;border:1.5px solid #7c3aed;color:#7c3aed;background:#fff;cursor:pointer;font-family:inherit">📥 Exportar JSON</button>' +
+    '<button onclick="if(confirm(\'¿Borrar todas las correcciones?\'))clearCorrections()" style="font-size:.75rem;padding:5px 10px;border-radius:6px;border:1.5px solid #e5e7eb;color:#94a3b8;background:#fff;cursor:pointer;font-family:inherit">🗑️ Borrar todo</button>' +
+  '</div>';
+}
+
+function deleteCorrection(id) {
+  _trCorrections = _trCorrections.filter(function(c){return c.id !== id;});
+  localStorage.setItem('haptica_corrections', JSON.stringify(_trCorrections));
+  loadCorrections();
+}
+
+function exportCorrections() {
+  var blob = new Blob([JSON.stringify(_trCorrections, null, 2)], {type:'application/json'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'haptica_corrections_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+}
+
+function clearCorrections() {
+  _trCorrections = [];
+  localStorage.removeItem('haptica_corrections');
+  loadCorrections();
+}
+
 function adminAction(action) {
   var pwd = document.getElementById('admin-pwd').value;
   if (!pwd) { alert('Introduce la contraseña admin'); return; }
@@ -1446,6 +1662,80 @@ function adminAction(action) {
         🗑️ Vaciar BD (para reimportar desde cero)
       </button>
       <div id="admin-msg" style="font-size:.82rem;padding:.5rem;border-radius:6px;display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ENTRENAMIENTO IA -->
+<div class="modal-overlay" id="training-modal">
+  <div class="modal" style="max-width:720px;max-height:92vh;display:flex;flex-direction:column">
+    <div class="modal-hdr" style="background:linear-gradient(135deg,#5b21b6,#7c3aed)">
+      <h3>🤖 Entrenamiento IA — Corrección de parseos</h3>
+      <button class="modal-close" onclick="closeTraining()">✕</button>
+    </div>
+    <div style="padding:1rem;overflow-y:auto;flex:1">
+      <div style="background:#f5f3ff;border-left:3px solid #7c3aed;border-radius:6px;padding:.7rem 1rem;font-size:.8rem;color:#4c1d95;margin-bottom:1rem;line-height:1.6">
+        <strong>¿Para qué sirve esto?</strong> Gemini parsea automáticamente los informes, pero puede cometer errores.
+        Aquí puedes revisar parseos y marcar correcciones que mejorarán los resultados futuros.
+        Busca un informe, ve el texto original junto al parseo de la IA, y corrige lo que esté mal.
+      </div>
+
+      <!-- Búsqueda -->
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:.5rem;margin-bottom:.8rem;align-items:end">
+        <div>
+          <div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:3px">Mediador</div>
+          <select id="tr-mediator" style="width:100%;padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.83rem;font-family:inherit">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:3px">Fecha</div>
+          <input type="date" id="tr-date" style="width:100%;padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.83rem;font-family:inherit">
+        </div>
+        <button onclick="trainSearch()" style="padding:8px 16px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:.83rem;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">🔍 Buscar</button>
+      </div>
+
+      <!-- Lista de resultados -->
+      <div id="tr-results" style="margin-bottom:.8rem">
+        <div style="color:#94a3b8;font-size:.82rem;text-align:center;padding:1.5rem">
+          Busca un informe para revisar su parseo
+        </div>
+      </div>
+
+      <!-- Panel de corrección (oculto hasta seleccionar) -->
+      <div id="tr-correction-panel" style="display:none">
+        <div style="border-top:2px solid #7c3aed;padding-top:.8rem;margin-top:.5rem">
+          <div style="font-size:.82rem;font-weight:700;color:#5b21b6;margin-bottom:.6rem">✏️ Corrección del parseo seleccionado</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-bottom:.8rem">
+            <div>
+              <div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:.3rem">📄 Texto original del informe</div>
+              <div id="tr-original-text" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:.7rem;font-size:.75rem;line-height:1.6;max-height:200px;overflow-y:auto;white-space:pre-wrap;font-family:monospace;color:#374151"></div>
+            </div>
+            <div>
+              <div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:.3rem">🤖 Lo que interpretó la IA</div>
+              <div id="tr-ia-result" style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:.7rem;font-size:.75rem;line-height:1.8;max-height:200px;overflow-y:auto"></div>
+            </div>
+          </div>
+          <div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:.4rem">🎯 Corrección (campos con error — deja en blanco los que estén bien)</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.6rem" id="tr-fields">
+            <!-- generado dinámicamente -->
+          </div>
+          <div style="display:flex;align-items:center;gap:.5rem">
+            <input type="text" id="tr-note" placeholder="Nota libre sobre la corrección (opcional)" style="flex:1;padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.82rem;font-family:inherit">
+            <button onclick="saveCorrection()" style="padding:8px 18px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:.83rem;font-weight:600;cursor:pointer;font-family:inherit">💾 Guardar corrección</button>
+          </div>
+          <div id="tr-save-msg" style="font-size:.8rem;margin-top:.4rem"></div>
+        </div>
+      </div>
+
+      <!-- Historial de correcciones -->
+      <div style="border-top:1px solid #e5e7eb;padding-top:.8rem;margin-top:.8rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+          <div style="font-size:.78rem;font-weight:600;color:#374151">📚 Correcciones guardadas</div>
+          <button onclick="loadCorrections()" style="font-size:.73rem;color:#7c3aed;background:none;border:none;cursor:pointer;font-family:inherit">↻ Actualizar</button>
+        </div>
+        <div id="tr-corrections-list" style="font-size:.78rem;color:#94a3b8">Cargando...</div>
+      </div>
     </div>
   </div>
 </div>
