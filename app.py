@@ -192,6 +192,12 @@ def init_db():
         except: db.rollback()
         cur.close(); db.close()
         print("DB lista")
+        # Crear tabla reports_v3 automáticamente al arrancar
+        try:
+            from migrate_v3 import migrate
+            migrate()
+        except Exception as e:
+            print(f"migrate_v3 en init_db: {e}")
         threading.Thread(target=auto_seed, daemon=True).start()
         threading.Thread(target=normalize_existing_mediators, daemon=True).start()
     except Exception as e:
@@ -809,12 +815,11 @@ def mediators_summary():
 @app.route('/api/admin/fix-raul-agua', methods=['POST'])
 def fix_raul_agua():
     pwd = request.headers.get('X-Admin-Password','')
-    if pwd != os.environ.get('ADMIN_PASSWORD','haptica_admin_2025'):
+    if pwd != ADMIN_PASSWORD and pwd != API_PASSWORD:
         return jsonify({'error':'No autorizado'}), 401
     db = get_db(); cur = db.cursor()
     cur.execute("""UPDATE reports SET agua=1000
-        WHERE agua=1 AND LOWER(mediator) LIKE '%raul%'
-        OR agua=1 AND mediator='Raúl Blasco'""")
+        WHERE agua=1 AND (LOWER(mediator) LIKE '%raul%' OR mediator='Raúl Blasco')""")
     updated = cur.rowcount
     db.commit()
     return jsonify({'ok': True, 'updated': updated})
@@ -1042,8 +1047,8 @@ def _upsert_v3(cur, parsed: dict, source_id: int, body_preview: str):
 
 
 @app.route("/api/v3/reports")
+@require_auth
 def v3_reports():
-    require_auth()
     page     = int(request.args.get("page", 1))
     per_page = int(request.args.get("per_page", 50))
     mediator = request.args.get("mediator")
@@ -1070,8 +1075,8 @@ def v3_reports():
 
 
 @app.route("/api/v3/parse-one", methods=["POST"])
+@require_auth
 def v3_parse_one():
-    require_auth()
     data = request.get_json() or {}
     text = data.get("text", "").strip()
     source_id = data.get("source_id")
@@ -1093,8 +1098,8 @@ def v3_parse_one():
 
 
 @app.route("/api/v3/reparse-all", methods=["POST"])
+@require_auth
 def v3_reparse_all():
-    require_auth()
     if _reparse_status["running"]:
         return jsonify({"error": "Ya hay un reparseo en curso", "status": _reparse_status}), 409
     limit = int(request.get_json().get("limit", 0) if request.get_json() else 0)
@@ -1148,15 +1153,15 @@ def v3_reparse_all():
 
 
 @app.route("/api/v3/reparse-status")
+@require_auth
 def v3_reparse_status():
-    require_auth()
     pct = round(_reparse_status["done"] / _reparse_status["total"] * 100, 1) if _reparse_status["total"] > 0 else 0
     return jsonify({**_reparse_status, "percent": pct})
 
 
 @app.route("/api/v3/stats")
+@require_auth
 def v3_stats():
-    require_auth()
     db = get_db(); cur = db.cursor()
     cur.execute("""
         SELECT COUNT(*) as total,
@@ -1178,8 +1183,8 @@ def v3_stats():
 
 
 @app.route("/api/v3/conducta")
+@require_auth
 def v3_conducta():
-    require_auth()
     db = get_db(); cur = db.cursor()
     cur.execute("""
         SELECT TO_CHAR(date, 'YYYY-MM') as month,
@@ -1195,8 +1200,8 @@ def v3_conducta():
 
 
 @app.route("/api/v3/alimentacion")
+@require_auth
 def v3_alimentacion():
-    require_auth()
     mediator = request.args.get("mediator")
     date_from = request.args.get("date_from")
     date_to   = request.args.get("date_to")

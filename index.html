@@ -1885,6 +1885,8 @@ function adminAction(action) {
           ? '✅ Normalizados ' + (d.total_updated||0) + ' registros'
           : action==='truncate'
           ? '✅ BD vaciada. Ahora sube el chat completo con Actualizar datos.'
+          : action==='fix-raul-agua'
+          ? '✅ Agua Raúl corregida: ' + (d.updated||0) + ' registros actualizados'
           : '✅ BD recargada: ' + d.inserted + '/' + d.total + ' informes';
         setTimeout(function(){ loadAll(); }, 1500);
       } else {
@@ -1896,6 +1898,47 @@ function adminAction(action) {
       msg.style.background='#fef2f2'; msg.style.color='#dc2626';
       msg.textContent = '❌ ' + e.message;
     });
+}
+
+function adminMigrateV3() {
+  var pwd = document.getElementById('admin-pwd').value;
+  if (!pwd) { alert('Introduce la contraseña admin'); return; }
+  var prog = document.getElementById('v3-reparse-progress');
+  var msg  = document.getElementById('admin-msg');
+  prog.style.display='block'; prog.textContent='⏳ Creando tabla reports_v3...';
+  msg.style.display='none';
+  // 1. Migrar tabla
+  fetch('/api/admin/migrate-v3', { method:'POST', headers:{'X-Admin-Password':pwd,'X-Password':API_PWD} })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(!d.ok){ prog.textContent='❌ Error en migración: '+(d.error||'?'); return; }
+      prog.textContent='✅ Tabla V3 lista. Lanzando reparseo IA (puede tardar varios minutos)...';
+      // 2. Lanzar reparseo en background
+      return fetch('/api/v3/reparse-all', { method:'POST',
+        headers:{'X-Password':API_PWD,'Content-Type':'application/json'},
+        body:JSON.stringify({}) })
+        .then(function(r){ return r.json(); });
+    })
+    .then(function(d){
+      if(!d || !d.ok){ if(d) prog.textContent='❌ '+(d.error||'Error al lanzar reparseo'); return; }
+      prog.textContent='🔄 Reparseo en curso: 0% completado...';
+      // 3. Polling del estado cada 4 segundos
+      var interval = setInterval(function(){
+        apiFetch('/api/v3/reparse-status').then(function(r){return r.json();}).then(function(s){
+          var pct = s.percent||0;
+          var done = s.done||0; var total = s.total||0;
+          prog.textContent = s.running
+            ? '🔄 Reparseo: ' + pct + '% (' + done + '/' + total + ' informes)...'
+            : '✅ Reparseo completado: ' + done + '/' + total + ' informes parseados' +
+              (s.errors>0 ? ' (' + s.errors + ' errores)' : '');
+          if(!s.running){
+            clearInterval(interval);
+            setTimeout(function(){ renderV3Tab(); }, 500);
+          }
+        }).catch(function(){ clearInterval(interval); });
+      }, 4000);
+    })
+    .catch(function(e){ prog.textContent='❌ '+e.message; });
 }
 
 </script>
@@ -1957,6 +2000,12 @@ function adminAction(action) {
       <button onclick="adminAction('truncate')" style="padding:9px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit">
         🗑️ Vaciar BD (para reimportar desde cero)
       </button>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:.2rem 0">
+      <div style="font-size:.75rem;color:#6b7280;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Parseo IA (V3)</div>
+      <button onclick="adminMigrateV3()" style="padding:9px;border-radius:8px;border:none;background:#0f766e;color:#fff;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit">
+        🚀 Crear tabla V3 + lanzar reparseo IA
+      </button>
+      <div id="v3-reparse-progress" style="display:none;font-size:.78rem;color:#6b7280;padding:.4rem .5rem;background:#f0fdf4;border-radius:6px;border:1px solid #bbf7d0"></div>
       <div id="admin-msg" style="font-size:.82rem;padding:.5rem;border-radius:6px;display:none"></div>
     </div>
   </div>
