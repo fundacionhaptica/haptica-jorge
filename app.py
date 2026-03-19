@@ -1215,7 +1215,55 @@ def v3_alimentacion():
     return jsonify(rows)
 
 
-@app.route("/api/admin/migrate-v3", methods=["GET", "POST"])
+@app.route('/trainer')
+@app.route('/trainer/')
+def trainer_frontend():
+    return send_file('trainer.html')
+
+
+@app.route('/api/training/improve-prompt', methods=['POST'])
+@require_auth
+def improve_prompt():
+    """Mejora el prompt de Gemini usando las correcciones acumuladas."""
+    if not V3_AVAILABLE:
+        return jsonify({'error': 'parser_v3 no disponible'}), 503
+    data = request.get_json() or {}
+    current_prompt = data.get('current_prompt', '')
+    errors = data.get('errors', [])
+    if not errors:
+        return jsonify({'error': 'No hay errores para mejorar'}), 400
+
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if not gemini_key:
+        return jsonify({'error': 'GEMINI_API_KEY no configurada'}), 503
+
+    try:
+        from google import genai as gai
+        client = gai.Client(api_key=gemini_key)
+
+        IMPROVE_META = """Eres experto en prompt engineering para sistemas de parseo de texto en español.
+Se te proporciona el prompt actual de un parser de informes de mediación y una lista de errores detectados.
+Tu tarea: reescribe el prompt mejorándolo para corregir esos errores específicos.
+Mantén toda la estructura y campos existentes. Añade reglas concretas para los patrones de error.
+No elimines reglas que funcionen bien. Devuelve SOLO el prompt reescrito, sin explicaciones ni markdown."""
+
+        error_summary = '\n'.join([
+            f'Campo "{e["field"]}": parseó "{e["parsed"]}" → correcto era "{e["corrected"]}"'
+            for e in errors[-30:]
+        ])
+        user_msg = f"PROMPT ACTUAL:\n{current_prompt}\n\nERRORES DETECTADOS ({len(errors)}):\n{error_summary}\n\nReescribe el prompt corrigiendo estos errores."
+
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=user_msg,
+        )
+        new_prompt = response.text.strip()
+        if len(new_prompt) < 100:
+            return jsonify({'error': 'Respuesta vacía o inválida'}), 500
+
+        return jsonify({'ok': True, 'new_prompt': new_prompt})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 def migrate_v3_endpoint():
     pwd = request.headers.get('X-Admin-Password','') or request.args.get('pwd','')
     if pwd != ADMIN_PASSWORD and pwd != API_PASSWORD:

@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entrenador IA — Fundación Háptica</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, sans-serif; background: #f5f4f0; color: #1a1a1a; font-size: 14px; }
+
+header { background: #1a1a2e; color: #fff; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+header h1 { font-size: 16px; font-weight: 500; }
+header .meta { font-size: 12px; color: #8888aa; display: flex; gap: 12px; align-items: center; }
+.badge { background: #3d3d6b; color: #aaaaff; font-size: 11px; padding: 3px 8px; border-radius: 4px; }
+.badge-green { background: #1a3d2e; color: #4ade80; }
+.badge-red { background: #3d1a1a; color: #f87171; }
+
+/* LOGIN */
+#loginScreen { display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 52px); }
+.login-card { background: #fff; border-radius: 12px; padding: 2rem; max-width: 360px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,.1); }
+.login-card h2 { font-size: 1.1rem; color: #1a1a2e; margin-bottom: 1rem; }
+.login-card input { width: 100%; padding: 9px 12px; border: 1.5px solid #ddd; border-radius: 8px; font-size: .9rem; margin-bottom: .6rem; font-family: inherit; }
+.login-card input:focus { outline: none; border-color: #4444aa; }
+.login-card button { width: 100%; padding: 10px; border: none; border-radius: 8px; background: #4444aa; color: #fff; font-size: .9rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+.login-err { color: #c44; font-size: .82rem; margin-top: .4rem; display: none; }
+
+/* LAYOUT */
+.layout { display: grid; grid-template-columns: 1fr 1fr; height: calc(100vh - 52px); }
+.panel { display: flex; flex-direction: column; overflow: hidden; }
+.left-panel { border-right: 1px solid #ddd; }
+.tabs { display: flex; border-bottom: 1px solid #ddd; background: #fff; overflow-x: auto; }
+.tab { padding: 9px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: #666; white-space: nowrap; flex-shrink: 0; }
+.tab.active { border-bottom-color: #4444aa; color: #4444aa; font-weight: 500; }
+.panel-body { flex: 1; overflow-y: auto; padding: 16px; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+textarea, input[type=text] {
+  width: 100%; border: 1px solid #ddd; border-radius: 8px;
+  padding: 10px; font-family: monospace; font-size: 12px;
+  background: #fafaf8; color: #1a1a1a;
+}
+textarea { resize: vertical; }
+textarea:focus, input:focus { outline: none; border-color: #4444aa; }
+#inputMsg { height: 180px; }
+#systemPrompt { height: 280px; }
+
+button { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.15s; font-family: inherit; }
+.btn-primary { background: #4444aa; color: #fff; }
+.btn-primary:hover { background: #3333aa; }
+.btn-primary:disabled { background: #999; cursor: not-allowed; }
+.btn-secondary { background: #fff; color: #444; border: 1px solid #ccc; }
+.btn-secondary:hover { background: #f5f5f5; }
+.btn-danger { background: #c44; color: #fff; }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-green { background: #16a34a; color: #fff; }
+
+.field-group { margin-bottom: 10px; }
+.field-label { font-size: 11px; font-weight: 500; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.field-value { background: #fff; border: 1px solid #e0ddd5; border-radius: 6px; padding: 7px 10px; font-size: 13px; min-height: 30px; white-space: pre-wrap; word-break: break-word; }
+.field-value.empty { color: #bbb; font-style: italic; }
+
+.alert { padding: 9px 13px; border-radius: 6px; font-size: 13px; margin-bottom: 10px; line-height: 1.5; }
+.alert-info { background: #eef5ff; border: 1px solid #bcd; color: #336; }
+.alert-success { background: #f0fff4; border: 1px solid #bdb; color: #363; }
+.alert-error { background: #fff0f0; border: 1px solid #dbb; color: #633; }
+.alert-warn { background: #fffbe6; border: 1px solid #f0cc4a; color: #6b4c00; }
+
+.compare-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; font-size: 12px; }
+.compare-label { font-size: 11px; color: #888; font-weight: 500; margin-bottom: 2px; }
+.compare-ia { background: #eef5ff; border: 1px solid #bcd; border-radius: 4px; padding: 5px 8px; }
+.compare-gt { background: #f0fff4; border: 1px solid #bdb; border-radius: 4px; padding: 5px 8px; }
+.match { border-color: #4a9 !important; }
+.mismatch { border-color: #c44 !important; background: #fff5f5 !important; }
+
+.correction-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 7px; }
+.correction-row label { font-size: 12px; color: #555; min-width: 110px; padding-top: 6px; }
+.correction-row input[type=text], .correction-row textarea { flex: 1; height: auto; min-height: 30px; font-size: 12px; padding: 5px 7px; }
+.correction-row textarea { height: 50px; }
+
+.stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+.stat-card { background: #fff; border: 1px solid #e0ddd5; border-radius: 8px; padding: 9px; text-align: center; }
+.stat-num { font-size: 20px; font-weight: 600; }
+.stat-lbl { font-size: 11px; color: #888; margin-top: 2px; }
+.score-ok { color: #16a34a; } .score-warn { color: #ea7c00; } .score-err { color: #dc2626; }
+
+.history-item { background: #fff; border: 1px solid #e0ddd5; border-radius: 7px; padding: 10px; margin-bottom: 7px; cursor: pointer; }
+.history-item:hover { border-color: #4444aa; }
+.history-meta { display: flex; gap: 8px; font-size: 11px; color: #888; margin-bottom: 3px; flex-wrap: wrap; }
+
+.improve-banner { background: #fff8e1; border: 1px solid #f5c842; border-radius: 8px; padding: 9px 13px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.improve-banner span { font-size: 12px; color: #6b4c00; }
+.progress-bar-wrap { background: #eee; border-radius: 4px; height: 5px; flex: 1; margin: 0 8px; }
+.progress-bar-fill { background: #f5c842; border-radius: 4px; height: 5px; transition: width 0.3s; }
+
+.version-item { background: #fff; border: 1px solid #e0ddd5; border-radius: 7px; padding: 10px; margin-bottom: 7px; }
+.version-item .v-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.version-item .v-meta { font-size: 11px; color: #888; }
+.version-item .v-reason { font-size: 12px; color: #555; margin-bottom: 4px; }
+.version-item pre { font-size: 10px; font-family: monospace; background: #f5f4f0; border-radius: 4px; padding: 5px 7px; max-height: 70px; overflow-y: auto; white-space: pre-wrap; color: #333; }
+
+.error-log-item { background: #fff0f0; border: 1px solid #f9d; border-radius: 5px; padding: 7px 9px; margin-bottom: 5px; font-size: 12px; }
+.error-log-item strong { color: #c44; }
+
+.spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.divider { border: none; border-top: 1px solid #e0ddd5; margin: 10px 0; }
+
+.db-corrections { background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+.db-correction-item { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid #ede9fe; font-size: 12px; }
+.db-correction-item:last-child { border-bottom: none; }
+
+@media(max-width:700px){
+  .layout { grid-template-columns: 1fr; }
+  .left-panel { border-right: none; border-bottom: 1px solid #ddd; max-height: 50vh; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:12px">
+    <h1>🤖 Entrenador IA — Fundación Háptica</h1>
+    <span class="badge">Parser V3</span>
+  </div>
+  <div class="meta">
+    <span id="apiStatus" class="badge badge-red">Desconectado</span>
+    <span id="dbCorrCount" style="font-size:11px"></span>
+    <a href="/dashboard" style="color:#aaaaff;font-size:12px;text-decoration:none">← Dashboard</a>
+  </div>
+</header>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-card">
+    <h2>🤖 Entrenador IA</h2>
+    <p style="font-size:.85rem;color:#666;margin-bottom:1rem">Herramienta de parseo interactivo y mejora continua del prompt de Gemini.</p>
+    <input type="text" id="loginUrl" placeholder="URL del dashboard (ej: https://...railway.app)" value="">
+    <input type="password" id="loginPwd" placeholder="Contraseña">
+    <button onclick="doLogin()">Entrar</button>
+    <div class="login-err" id="loginErr">Contraseña incorrecta o URL no válida</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appLayout" class="layout" style="display:none">
+
+  <!-- PANEL IZQUIERDO -->
+  <div class="panel left-panel">
+    <div class="tabs" id="leftTabs">
+      <div class="tab active" onclick="switchTab('left','input')">Parsear</div>
+      <div class="tab" onclick="switchTab('left','prompt')">Prompt IA</div>
+      <div class="tab" onclick="switchTab('left','export')">Exportar</div>
+    </div>
+
+    <!-- TAB INPUT -->
+    <div class="tab-content active" id="tab-input">
+      <div class="panel-body">
+        <div class="field-group">
+          <div class="field-label">Mensaje WhatsApp</div>
+          <textarea id="inputMsg" placeholder="Pega aquí el mensaje del mediador..."></textarea>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+          <button class="btn-primary" id="parseBtn" onclick="parseMessage()">Parsear con IA</button>
+          <button class="btn-secondary btn-sm" onclick="loadEx(1)">Ej. Jonathan</button>
+          <button class="btn-secondary btn-sm" onclick="loadEx(2)">Ej. Raúl</button>
+          <button class="btn-secondary btn-sm" onclick="clearAll()">Limpiar</button>
+        </div>
+        <div id="statusMsg"></div>
+        <div id="resultSection" style="display:none">
+          <hr class="divider">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div style="font-size:13px;font-weight:500">Resultado parseado</div>
+            <div id="scoreDisplay"></div>
+          </div>
+          <div id="parsedFields"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB PROMPT -->
+    <div class="tab-content" id="tab-prompt">
+      <div class="panel-body">
+        <div id="improveBanner" style="display:none" class="improve-banner">
+          <span id="improveMsg"></span>
+          <div class="progress-bar-wrap"><div class="progress-bar-fill" id="improveProgress" style="width:0%"></div></div>
+          <button id="btnImproveNow" class="btn-primary btn-sm">Mejorar ahora</button>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div class="field-label">Prompt activo (v<span id="promptVersion">1</span>)</div>
+          <div style="font-size:11px;color:#888">Umbral:
+            <select id="improveThreshold" style="width:50px;padding:2px 4px;font-size:11px">
+              <option value="3">3</option><option value="5" selected>5</option>
+              <option value="10">10</option><option value="20">20</option>
+            </select> correcciones
+          </div>
+        </div>
+        <textarea id="systemPrompt" style="height:260px;font-size:11px"></textarea>
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          <button id="btnSavePrompt" class="btn-primary btn-sm">Guardar</button>
+          <button id="btnImproveManual" class="btn-secondary btn-sm">Mejorar con correcciones</button>
+          <button id="btnSyncPrompt" class="btn-green btn-sm">Sincronizar a BD</button>
+          <button id="btnPromptHistory" class="btn-secondary btn-sm">Historial</button>
+          <button id="btnResetPrompt" class="btn-secondary btn-sm">Restaurar default</button>
+        </div>
+        <div id="promptHistoryPanel" style="display:none;margin-top:10px">
+          <div class="field-label" style="margin-bottom:6px">Historial de versiones</div>
+          <div id="promptVersionList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB EXPORTAR -->
+    <div class="tab-content" id="tab-export">
+      <div class="panel-body">
+        <div class="alert alert-info">Exporta los parseos validados en formato compatible con la BD.</div>
+        <div id="exportStats"></div>
+        <div style="display:flex;gap:6px;margin-top:10px">
+          <button class="btn-primary btn-sm" onclick="exportJSON()">Descargar JSON</button>
+          <button class="btn-secondary btn-sm" onclick="exportCSV()">Descargar CSV</button>
+          <button class="btn-danger btn-sm" onclick="clearHistory()">Borrar historial local</button>
+        </div>
+        <hr class="divider">
+        <div id="exportPreview" style="font-size:11px;font-family:monospace;background:#f5f5f5;border-radius:6px;padding:10px;max-height:300px;overflow-y:auto"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL DERECHO -->
+  <div class="panel">
+    <div class="tabs" id="rightTabs">
+      <div class="tab active" onclick="switchTab('right','compare')">Comparar</div>
+      <div class="tab" onclick="switchTab('right','correct')">Corregir</div>
+      <div class="tab" onclick="switchTab('right','history')">Historial</div>
+      <div class="tab" onclick="switchTab('right','dbcorr')">BD correcciones</div>
+      <div class="tab" onclick="switchTab('right','errors')">Errores</div>
+    </div>
+
+    <!-- TAB COMPARAR -->
+    <div class="tab-content active" id="tab-compare">
+      <div class="panel-body">
+        <div style="background:#fff;border:1px solid #ddd;border-radius:8px;padding:10px;margin-bottom:10px">
+          <div style="font-size:12px;color:#666;margin-bottom:6px">Selecciona un informe real para comparar:</div>
+          <select id="gtSelector" onchange="loadGroundTruth()">
+            <option value="">-- Sin comparación --</option>
+          </select>
+        </div>
+        <div id="compareSection">
+          <div class="alert alert-info">Parsea un mensaje y selecciona un ground truth para ver la comparación campo a campo.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB CORREGIR -->
+    <div class="tab-content" id="tab-correct">
+      <div class="panel-body">
+        <div class="alert alert-info">Corrige los campos erróneos. Se guardan en la BD y mejoran automáticamente el prompt.</div>
+        <div id="correctionForm"><div class="alert alert-info">Primero parsea un mensaje.</div></div>
+      </div>
+    </div>
+
+    <!-- TAB HISTORIAL -->
+    <div class="tab-content" id="tab-history">
+      <div class="panel-body">
+        <div class="stat-row" id="statsRow">
+          <div class="stat-card"><div class="stat-num" id="s-total">0</div><div class="stat-lbl">Parseados</div></div>
+          <div class="stat-card"><div class="stat-num score-ok" id="s-ok">0</div><div class="stat-lbl">Score alto</div></div>
+          <div class="stat-card"><div class="stat-num score-warn" id="s-warn">0</div><div class="stat-lbl">Score medio</div></div>
+          <div class="stat-card"><div class="stat-num score-err" id="s-err">0</div><div class="stat-lbl">Score bajo</div></div>
+        </div>
+        <div id="historyList"><div class="alert alert-info">Sin parseos aún.</div></div>
+      </div>
+    </div>
+
+    <!-- TAB BD CORRECCIONES -->
+    <div class="tab-content" id="tab-dbcorr">
+      <div class="panel-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:13px;font-weight:500">Correcciones en BD</div>
+          <button class="btn-secondary btn-sm" onclick="loadDBCorrections()">↻ Actualizar</button>
+        </div>
+        <div class="alert alert-info" style="font-size:12px">Las correcciones validadas se usan automáticamente en los próximos parseos (few-shot learning). Valida las que sean correctas.</div>
+        <div id="dbCorrList"><div class="alert alert-info">Cargando...</div></div>
+      </div>
+    </div>
+
+    <!-- TAB ERRORES -->
+    <div class="tab-content" id="tab-errors">
+      <div class="panel-body">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:13px;font-weight:500">Errores detectados</div>
+          <button class="btn-danger btn-sm" onclick="clearErrors()">Limpiar</button>
+        </div>
+        <div id="errorLog"><div style="color:#bbb;font-size:13px">Sin errores registrados aún.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+const FIELDS = ['mediador','fecha','turno','pis','caca','agua_ml','sueno_horas','estiramientos',
+  'autoagresiones','agresiones_mediador','agresiones_terceros','aleteos',
+  'medicacion','estado','desayuno','almuerzo','comida','merienda','cena',
+  'actividad','vocabulario','observaciones'];
+
+const FIELD_LABELS = {
+  mediador:'Mediador',fecha:'Fecha informe',turno:'Turno',pis:'Pis (veces)',caca:'Caca (veces)',
+  agua_ml:'Agua (ml)',sueno_horas:'Sueño (horas)',estiramientos:'Estiramientos (0-5)',
+  autoagresiones:'Autoagresiones (nº)',agresiones_mediador:'Agresiones mediador (nº)',
+  agresiones_terceros:'Agresiones terceros (nº)',aleteos:'Aleteos (nº)',
+  medicacion:'Medicación',estado:'Estado de ánimo',desayuno:'Desayuno',almuerzo:'Almuerzo',
+  comida:'Comida',merienda:'Merienda',cena:'Cena',actividad:'Actividades',
+  vocabulario:'Vocabulario nuevo',observaciones:'Observaciones'
+};
+
+const EXAMPLES = {
+  1:`[12/2/26, 9:11:59] 
+Mediador: Jonathan Cuidador 
+Fecha: 11/02/2026 
+Turno: Noche 
+Baño: Pis=4 / caca=0 
+Agua=550ml 
+Sueño: 3:25 
+Picos de conducta:0 
+Estiramientos:1 
+Medicacion: 1 gaba / 1 citrato de magnesio / 1 daridorexant / 20 gotas de Pau de Arco / Aloe Vera 
+Estado: Normal, tranquilo`,
+  2:`[12/2/26, 11:02:40] 
+Mediador: Raúl Blasco 
+Fecha: 11/02/2026 
+Turno: Mañana 
+Baño: Pis=3 /caca=0 
+Agua=1l 
+Comida: almuerzo: tortitas, anacardos, 2 mandarinas. 
+Picos de conducta: 1 
+Estado: Expresivo y/o receptivo / Normal / contento 
+Vocabulario: braille, manualidades, cinta de correr, piscina 
+Actividades: Cinta de correr / Braile /Manualidades / Música / Piscina 
+Medicación: 1 probiótico.`
+};
+
+const GROUND_TRUTH = [
+  {label:"gregorioalexander · 15/02/2025 · Tarde",mediador:"gregorioalexander",fecha:"2025-02-15",turno:"Tarde",pis:4,caca:0,agua_ml:600,sueno_horas:null,estiramientos:0,autoagresiones:0,agresiones_mediador:0,agresiones_terceros:0,aleteos:0,medicacion:"Letibalm labios / Ácido Bórico orejas",estado:"Tranquilo en desplazamientos/esperas y en actividad",desayuno:null,almuerzo:null,comida:"Sopa de pescado con quinoa, pollo con zanahoria, té",merienda:"Bocadillos de sardinas y jamón, mandarina",cena:"Crema de verduras, filete de pavo con tomate y queso curado, yogurt",actividad:"Piscina / Vestuario / Merienda Stadium / Tranvía / Paseo Goya / Cena",vocabulario:null,observaciones:"Tarjeta tranvía recargada"},
+  {label:"Elena · 16/02/2025 · Mañana",mediador:"Elena",fecha:"2025-02-16",turno:"Mañana",pis:5,caca:1,agua_ml:600,sueno_horas:null,estiramientos:0,autoagresiones:0,agresiones_mediador:0,agresiones_terceros:0,aleteos:0,medicacion:"Fenvi",estado:"Tranquilo y contento",desayuno:"leche con galletas, batido de frutas",almuerzo:"bocadillo",comida:null,merienda:null,cena:null,actividad:"Rutina diaria / Aula multisensorial / Pelotas Bobath / Paseo / Masaje pies / Tarjetas braille",vocabulario:null,observaciones:null},
+  {label:"Jonathan · 11/02/2026 · Noche",mediador:"Jonathan",fecha:"2026-02-11",turno:"Noche",pis:4,caca:0,agua_ml:550,sueno_horas:3.42,estiramientos:1,autoagresiones:0,agresiones_mediador:0,agresiones_terceros:0,aleteos:0,medicacion:"1 gaba / 1 citrato de magnesio / 1 daridorexant / 20 gotas Pau de Arco / Aloe Vera",estado:"Normal, tranquilo",desayuno:null,almuerzo:null,comida:null,merienda:null,cena:null,actividad:null,vocabulario:null,observaciones:null},
+  {label:"Raúl Blasco · 11/02/2026 · Mañana",mediador:"Raúl Blasco",fecha:"2026-02-11",turno:"Mañana",pis:3,caca:0,agua_ml:1000,sueno_horas:null,estiramientos:null,autoagresiones:0,agresiones_mediador:0,agresiones_terceros:0,aleteos:1,medicacion:"1 probiótico",estado:"Expresivo y/o receptivo / Normal / contento",desayuno:null,almuerzo:"tortitas, anacardos, 2 mandarinas",comida:null,merienda:null,cena:null,actividad:"Cinta de correr / Braille / Manualidades / Música / Piscina",vocabulario:"braille, manualidades, cinta de correr, piscina",observaciones:null}
+];
+
+const DEFAULT_PROMPT = `Eres un parser especializado en informes de mediación para personas con sordoceguera de la Fundación Háptica (Zaragoza).
+Tu tarea es extraer campos estructurados de mensajes de WhatsApp escritos por mediadores.
+
+CAMPOS A EXTRAER (devuelve SIEMPRE todos, null si no aparece):
+- mediador: nombre del mediador (sin "(Mediador)", "(Mediadora)" ni emojis)
+- fecha: fecha del informe en formato YYYY-MM-DD (la fecha del TURNO reportado, no la del mensaje WhatsApp)
+- turno: "Mañana", "Tarde" o "Noche" (normaliza variantes)
+- pis: número entero de veces que ha hecho pis
+- caca: número entero (0 si "no" o "cacas no")
+- agua_ml: agua bebida en mililitros (convierte: "1l"/"1 litro"→1000, "1.5 litros"→1500, "500ml"→500, "Agua=1l"→1000)
+- sueno_horas: horas de sueño como decimal ("3:25"→3.42, "7h30m"→7.5)
+- estiramientos: valor numérico 0-5
+
+CONDUCTA:
+- autoagresiones: episodios donde Jorge se hace daño a sí mismo
+- agresiones_mediador: episodios donde agrede al mediador
+- agresiones_terceros: episodios de agresión a otras personas
+- aleteos: agitación SIN agresión física
+Si "picos de conducta: 0" → todos a 0. Si "picos: 1" sin tipo → autoagresiones:1, resto 0.
+
+ALIMENTACIÓN por tomas: desayuno, almuerzo, comida, merienda, cena
+
+- medicacion: lista separada por " / "
+- estado: descripción del ánimo
+- actividad: actividades realizadas
+- vocabulario: palabras/signos nuevos
+- observaciones: logros y notas adicionales
+
+REGLAS:
+1. La fecha [entre corchetes] del mensaje WhatsApp NO es la fecha del informe.
+2. Raúl Blasco: "1l", "Agua=1l", "1 litro" = siempre 1000ml.
+3. "Comida: con Elena" sin detalle → comida:null.
+4. Devuelve SOLO JSON válido, sin markdown.
+
+FORMATO: {"mediador":null,"fecha":null,"turno":null,"pis":null,"caca":null,"agua_ml":null,"sueno_horas":null,"estiramientos":null,"autoagresiones":null,"agresiones_mediador":null,"agresiones_terceros":null,"aleteos":null,"medicacion":null,"estado":null,"desayuno":null,"almuerzo":null,"comida":null,"merienda":null,"cena":null,"actividad":null,"vocabulario":null,"observaciones":null}`;
+
+const IMPROVE_META = `Eres experto en prompt engineering para parseo de texto en español.
+Se te da el prompt actual de un parser de informes de mediación y una lista de errores detectados.
+Reescribe el prompt mejorándolo para corregir esos errores específicos.
+Mantén la estructura y campos existentes. Añade reglas concretas para los patrones de error.
+Devuelve SOLO el prompt reescrito, sin explicaciones ni markdown.`;
+
+// ── ESTADO ────────────────────────────────────────────────────────────────────
+var API_URL = '', API_PWD = '';
+var currentParsed = null;
+var currentGroundTruth = null;
+var history = JSON.parse(localStorage.getItem('haptica_trainer_history') || '[]');
+var errorLog = JSON.parse(localStorage.getItem('haptica_trainer_errors') || '[]');
+var systemPrompt = localStorage.getItem('haptica_trainer_prompt') || DEFAULT_PROMPT;
+var promptVersions = JSON.parse(localStorage.getItem('haptica_trainer_versions') || '[]');
+var correctionsSince = parseInt(localStorage.getItem('haptica_trainer_corr_count') || '0');
+
+// ── LOGIN ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  var saved = localStorage.getItem('haptica_trainer_creds');
+  if(saved) { try { var c=JSON.parse(saved); API_URL=c.url; API_PWD=c.pwd; showApp(); } catch(e){} }
+  document.getElementById('loginPwd').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
+  // Pre-fill URL
+  document.getElementById('loginUrl').value = window.location.origin;
+});
+
+function doLogin() {
+  var url = document.getElementById('loginUrl').value.trim().replace(/\/$/, '');
+  var pwd = document.getElementById('loginPwd').value;
+  if(!url || !pwd) return;
+  fetch(url + '/api/ping', { headers: {'X-Password': pwd} })
+    .then(function(r){ if(r.status===401) throw new Error('auth'); return r.json(); })
+    .then(function(d){
+      API_URL = url; API_PWD = pwd;
+      localStorage.setItem('haptica_trainer_creds', JSON.stringify({url:url,pwd:pwd}));
+      showApp();
+    })
+    .catch(function(e){
+      var err = document.getElementById('loginErr');
+      err.style.display='block';
+      err.textContent = e.message==='auth' ? 'Contraseña incorrecta' : 'No se pudo conectar a '+url;
+    });
+}
+
+function showApp() {
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('appLayout').style.display='grid';
+  document.getElementById('apiStatus').textContent='Conectado';
+  document.getElementById('apiStatus').className='badge badge-green';
+  document.getElementById('systemPrompt').value = systemPrompt;
+  document.getElementById('promptVersion').textContent = promptVersions.length + 1;
+  var sel = document.getElementById('gtSelector');
+  GROUND_TRUTH.forEach(function(gt,i){
+    var o=document.createElement('option'); o.value=i; o.textContent=gt.label; sel.appendChild(o);
+  });
+  document.getElementById('btnSavePrompt').addEventListener('click', savePrompt);
+  document.getElementById('btnResetPrompt').addEventListener('click', resetPrompt);
+  document.getElementById('btnImproveManual').addEventListener('click', improvePrompt);
+  document.getElementById('btnImproveNow').addEventListener('click', improvePrompt);
+  document.getElementById('btnPromptHistory').addEventListener('click', togglePromptHistory);
+  document.getElementById('btnSyncPrompt').addEventListener('click', syncPromptToDB);
+  refreshHistory();
+  refreshErrorLog();
+  updateExportPreview();
+  updateImproveBanner();
+  loadDBCorrections();
+}
+
+// ── PARSEO ────────────────────────────────────────────────────────────────────
+function loadEx(n){ document.getElementById('inputMsg').value = EXAMPLES[n]; }
+function clearAll(){
+  document.getElementById('inputMsg').value='';
+  document.getElementById('resultSection').style.display='none';
+  document.getElementById('statusMsg').innerHTML='';
+  currentParsed=null;
+}
+
+async function parseMessage() {
+  var msg = document.getElementById('inputMsg').value.trim();
+  if(!msg){ setStatus('Pega un mensaje primero.','error'); return; }
+  var btn=document.getElementById('parseBtn');
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Parseando...';
+  setStatus('Enviando a Gemini via API...','info');
+  try {
+    // Usar el endpoint de parseo individual del backend
+    var r = await apiFetch('/api/v3/parse-one', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text:msg})
+    });
+    var d = await r.json();
+    if(!d.ok) throw new Error(d.error||'Error del servidor');
+    var parsed = d.parsed;
+    currentParsed = {...parsed, _raw:msg, _timestamp:new Date().toISOString()};
+    renderResult(parsed);
+    addToHistory(parsed, msg);
+    renderCorrectionForm(parsed);
+    if(currentGroundTruth!==null) renderComparison(parsed, GROUND_TRUTH[currentGroundTruth]);
+    setStatus('Parseado correctamente ✓','success');
+    switchTab('right','compare');
+  } catch(e){
+    setStatus('Error: '+e.message,'error');
+  } finally {
+    btn.disabled=false; btn.textContent='Parsear con IA';
+  }
+}
+
+// ── RENDER RESULTADO ──────────────────────────────────────────────────────────
+function renderResult(p) {
+  document.getElementById('resultSection').style.display='block';
+  var score=calcScore(p);
+  document.getElementById('scoreDisplay').innerHTML=renderScoreBadge(score);
+  var groups=[
+    {label:'Identificación',fields:['mediador','fecha','turno']},
+    {label:'Baño / Hidratación / Sueño',fields:['pis','caca','agua_ml','sueno_horas']},
+    {label:'Conducta',fields:['estiramientos','autoagresiones','agresiones_mediador','agresiones_terceros','aleteos']},
+    {label:'Medicación / Estado',fields:['medicacion','estado']},
+    {label:'Alimentación',fields:['desayuno','almuerzo','comida','merienda','cena']},
+    {label:'Actividad / Vocabulario',fields:['actividad','vocabulario']},
+    {label:'Observaciones',fields:['observaciones']},
+  ];
+  document.getElementById('parsedFields').innerHTML = groups.map(function(g){
+    return '<div style="margin-bottom:2px"><div style="font-size:11px;font-weight:600;color:#4444aa;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 5px;padding-bottom:3px;border-bottom:1px solid #e8e5ff">'+g.label+'</div>'+
+      g.fields.map(function(f){
+        var v=p[f]; var empty=(v===null||v===undefined||v==='');
+        return '<div class="field-group"><div class="field-label">'+FIELD_LABELS[f]+'</div>'+
+          '<div class="field-value'+(empty?' empty':'')+'">'+( empty?'no detectado':esc(String(v)))+'</div></div>';
+      }).join('')+'</div>';
+  }).join('');
+}
+
+function renderScoreBadge(score){
+  var cls=score>=70?'score-ok':score>=40?'score-warn':'score-err';
+  return '<span class="'+cls+'" style="font-size:13px;font-weight:500;">'+score+'% detectados</span>';
+}
+function calcScore(p){
+  var filled=0; FIELDS.forEach(function(f){if(p[f]!==null&&p[f]!==undefined&&p[f]!=='')filled++;});
+  return Math.round((filled/FIELDS.length)*100);
+}
+
+// ── COMPARACIÓN ───────────────────────────────────────────────────────────────
+function loadGroundTruth(){
+  var idx=document.getElementById('gtSelector').value;
+  currentGroundTruth=idx===''?null:parseInt(idx);
+  if(currentGroundTruth!==null&&currentParsed) renderComparison(currentParsed, GROUND_TRUTH[currentGroundTruth]);
+  else document.getElementById('compareSection').innerHTML='<div class="alert alert-info">Parsea un mensaje y selecciona un ground truth.</div>';
+}
+
+function renderComparison(parsed, gt){
+  var fields=['mediador','fecha','turno','pis','caca','agua_ml','sueno_horas','estiramientos',
+    'autoagresiones','agresiones_mediador','agresiones_terceros','aleteos',
+    'estado','medicacion','desayuno','almuerzo','comida','merienda','cena','actividad','vocabulario'];
+  var matchCount=0, total=0;
+  var rows=fields.map(function(f){
+    var ia=parsed[f], gtv=gt[f];
+    if(gtv===null&&(ia===null||ia===undefined||ia===''))return '';
+    total++;
+    var iaStr=ia!==null&&ia!==undefined?String(ia):'(no detectado)';
+    var gtStr=gtv!==null&&gtv!==undefined?String(gtv):'—';
+    var match=iaStr.toLowerCase().trim()===gtStr.toLowerCase().trim();
+    if(match)matchCount++;
+    return '<div style="margin-bottom:8px"><div class="compare-label">'+FIELD_LABELS[f]+'</div>'+
+      '<div class="compare-row">'+
+        '<div><div style="font-size:10px;color:#4444aa;margin-bottom:2px">IA parseó</div>'+
+          '<div class="compare-ia'+(match?' match':' mismatch')+'">'+esc(iaStr)+'</div></div>'+
+        '<div><div style="font-size:10px;color:#4a9;margin-bottom:2px">Ground truth</div>'+
+          '<div class="compare-gt'+(match?' match':' mismatch')+'">'+esc(gtStr)+'</div></div>'+
+      '</div></div>';
+  }).join('');
+  var pct=total>0?Math.round((matchCount/total)*100):0;
+  var cls=pct>=70?'alert-success':'alert-error';
+  document.getElementById('compareSection').innerHTML=
+    '<div class="alert '+cls+'">Coincidencia: <strong>'+pct+'%</strong> ('+matchCount+'/'+total+' campos)</div>'+rows;
+}
+
+// ── FORMULARIO CORRECCIÓN ─────────────────────────────────────────────────────
+function renderCorrectionForm(parsed){
+  var groups=[
+    {label:'Identificación',fields:['mediador','fecha','turno']},
+    {label:'Baño / Hidratación / Sueño',fields:['pis','caca','agua_ml','sueno_horas']},
+    {label:'Conducta',fields:['estiramientos','autoagresiones','agresiones_mediador','agresiones_terceros','aleteos']},
+    {label:'Medicación / Estado',fields:['medicacion','estado']},
+    {label:'Alimentación',fields:['desayuno','almuerzo','comida','merienda','cena']},
+    {label:'Actividad / Vocabulario',fields:['actividad','vocabulario','observaciones']},
+  ];
+  var longFields=['medicacion','estado','desayuno','almuerzo','comida','merienda','cena','actividad','vocabulario','observaciones'];
+  var html=groups.map(function(g){
+    return '<div><div style="font-size:11px;font-weight:600;color:#4444aa;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 5px;padding-bottom:3px;border-bottom:1px solid #e8e5ff">'+g.label+'</div>'+
+      g.fields.map(function(f){
+        var isL=longFields.includes(f);
+        return '<div class="correction-row"><label>'+FIELD_LABELS[f]+'</label>'+
+          (isL?'<textarea id="corr_'+f+'"></textarea>':'<input type="text" id="corr_'+f+'">')+'</div>';
+      }).join('')+'</div>';
+  }).join('');
+  var container=document.getElementById('correctionForm');
+  container.innerHTML=html+'<div style="margin-top:10px;display:flex;gap:6px">'+
+    '<button id="btnSaveCorr" class="btn-primary btn-sm">Guardar corrección en BD</button>'+
+    '<button id="btnSaveOk" class="btn-green btn-sm">Marcar como correcto ✓</button></div>'+
+    '<div id="corrSaveMsg" style="margin-top:6px;font-size:12px"></div>';
+  // Poblar valores
+  groups.flatMap(function(g){return g.fields;}).forEach(function(f){
+    var el=document.getElementById('corr_'+f); if(!el)return;
+    var v=parsed[f]; el.value=(v!==null&&v!==undefined&&v!=='null')?String(v):'';
+  });
+  document.getElementById('btnSaveCorr').addEventListener('click', saveCorrection);
+  document.getElementById('btnSaveOk').addEventListener('click', saveAsCorrect);
+}
+
+function saveCorrection(){
+  if(!currentParsed)return;
+  var corrFields=['mediador','fecha','turno','pis','caca','agua_ml','sueno_horas','estiramientos',
+    'autoagresiones','agresiones_mediador','agresiones_terceros','aleteos',
+    'medicacion','estado','desayuno','almuerzo','comida','merienda','cena','actividad','vocabulario','observaciones'];
+  var corrections={};
+  corrFields.forEach(function(f){
+    var el=document.getElementById('corr_'+f); if(!el)return;
+    var orig=String(currentParsed[f]??''), corr=el.value??'';
+    if(orig.trim()!==corr.trim()) corrections[f]=corr;
+  });
+  if(!Object.keys(corrections).length){
+    var msg=document.getElementById('corrSaveMsg');
+    msg.style.color='#ea7c00'; msg.textContent='No hay cambios respecto al parseo original.';
+    return;
+  }
+  // Guardar en BD via API
+  var note = prompt('Nota sobre el error (opcional):') || '';
+  apiFetch('/api/training/corrections', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      original_preview: (currentParsed._raw||'').slice(0,500),
+      corrections: corrections,
+      note: note
+    })
+  }).then(function(r){return r.json();}).then(function(d){
+    var msg=document.getElementById('corrSaveMsg');
+    if(d.ok){
+      msg.style.color='#16a34a';
+      msg.textContent='✓ Guardada en BD (ID:'+d.id+'). Se usará en próximos parseos.';
+      // También guardar en log local
+      var errors=Object.keys(corrections).map(function(f){
+        return {field:f,parsed:String(currentParsed[f]??''),corrected:corrections[f],timestamp:new Date().toISOString()};
+      });
+      errorLog.push(...errors);
+      localStorage.setItem('haptica_trainer_errors', JSON.stringify(errorLog));
+      correctionsSince+=errors.length;
+      localStorage.setItem('haptica_trainer_corr_count', correctionsSince);
+      updateImproveBanner();
+      refreshErrorLog();
+      loadDBCorrections();
+      var threshold=parseInt(document.getElementById('improveThreshold').value||'5');
+      if(correctionsSince>=threshold) setTimeout(improvePrompt, 800);
+    } else {
+      msg.style.color='#c44'; msg.textContent='Error: '+(d.error||'desconocido');
+    }
+  }).catch(function(e){
+    var msg=document.getElementById('corrSaveMsg');
+    msg.style.color='#c44'; msg.textContent='Error: '+e.message;
+  });
+}
+
+function saveAsCorrect(){
+  if(!currentParsed)return;
+  var idx=history.findIndex(function(h){return h._timestamp===currentParsed._timestamp;});
+  if(idx>=0){history[idx]._validated=true;}
+  localStorage.setItem('haptica_trainer_history',JSON.stringify(history));
+  refreshHistory();
+  setStatus('Marcado como correcto ✓','success');
+}
+
+// ── HISTORIAL LOCAL ───────────────────────────────────────────────────────────
+function addToHistory(parsed, raw){
+  var entry={...parsed,_raw:raw,_timestamp:new Date().toISOString(),_score:calcScore(parsed)};
+  history.unshift(entry);
+  if(history.length>200)history=history.slice(0,200);
+  localStorage.setItem('haptica_trainer_history',JSON.stringify(history));
+  refreshHistory(); updateExportPreview();
+}
+
+function refreshHistory(){
+  var list=document.getElementById('historyList');
+  if(!history.length){list.innerHTML='<div class="alert alert-info">Sin parseos aún.</div>';return;}
+  list.innerHTML=history.slice(0,50).map(function(h,i){
+    var sc=h._score||0;
+    var cls=sc>=70?'score-ok':sc>=40?'score-warn':'score-err';
+    var tag=h._validated?' ✓':h._corrected?' ✏':'';
+    return '<div class="history-item" onclick="loadFromHistory('+i+')">'+
+      '<div class="history-meta"><span>'+(h.mediador||'?')+'</span><span>'+(h.fecha||'?')+'</span>'+
+      '<span>'+(h.turno||'?')+'</span><span class="'+cls+'">'+sc+'%'+tag+'</span></div>'+
+      '<div style="font-size:12px;color:#555">'+(h.estado||'').substring(0,60)+'</div></div>';
+  }).join('');
+  var ok=history.filter(function(h){return (h._score||0)>=70;}).length;
+  var warn=history.filter(function(h){return (h._score||0)>=40&&(h._score||0)<70;}).length;
+  var err=history.filter(function(h){return (h._score||0)<40;}).length;
+  document.getElementById('s-total').textContent=history.length;
+  document.getElementById('s-ok').textContent=ok;
+  document.getElementById('s-warn').textContent=warn;
+  document.getElementById('s-err').textContent=err;
+}
+
+function loadFromHistory(i){
+  var h=history[i]; currentParsed=h;
+  document.getElementById('inputMsg').value=h._raw||'';
+  renderResult(h); renderCorrectionForm(h); switchTab('left','input');
+}
+
+// ── BD CORRECCIONES ───────────────────────────────────────────────────────────
+function loadDBCorrections(){
+  var el=document.getElementById('dbCorrList');
+  apiFetch('/api/training/corrections').then(function(r){return r.json();}).then(function(d){
+    var corrs=d.corrections||[];
+    document.getElementById('dbCorrCount').textContent=corrs.length+' correcciones en BD';
+    if(!corrs.length){el.innerHTML='<div class="alert alert-info">Sin correcciones en BD todavía.</div>';return;}
+    el.innerHTML=corrs.slice(0,20).map(function(c){
+      var corrections=c.corrections_json||{};
+      var fields=Object.keys(corrections).map(function(k){
+        return '<span style="background:#ede9fe;color:#5b21b6;border-radius:3px;padding:1px 5px;margin-right:3px;font-size:11px">'+k+': '+corrections[k]+'</span>';
+      }).join('');
+      return '<div class="db-corrections">'+
+        '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">'+
+          '<div style="font-size:12px;color:#555;flex:1">'+esc((c.original_preview||'').slice(0,60))+'...</div>'+
+          '<div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">'+
+            (c.validated?'<span style="color:#16a34a;font-size:11px">✓ validada</span>':
+              '<button onclick="validateCorrDB('+c.id+')" style="font-size:11px;padding:2px 7px;border-radius:4px;border:1px solid #16a34a;color:#16a34a;background:#fff;cursor:pointer">✓ Validar</button>')+
+            '<button onclick="deleteCorrDB('+c.id+')" style="font-size:11px;padding:2px 6px;border-radius:4px;border:none;background:#fee2e2;color:#dc2626;cursor:pointer">✕</button>'+
+          '</div></div>'+
+        '<div>'+fields+'</div>'+
+        (c.note?'<div style="font-size:11px;color:#6b7280;margin-top:3px">📝 '+esc(c.note)+'</div>':'')+
+      '</div>';
+    }).join('');
+  }).catch(function(){el.innerHTML='<div class="alert alert-error">Error cargando correcciones</div>';});
+}
+
+function validateCorrDB(id){
+  apiFetch('/api/training/corrections/'+id+'/validate',{method:'POST'})
+    .then(function(){loadDBCorrections();setStatus('Corrección validada — se usará en próximos parseos','success');});
+}
+function deleteCorrDB(id){
+  apiFetch('/api/training/corrections/'+id,{method:'DELETE'}).then(function(){loadDBCorrections();});
+}
+
+// ── PROMPT ────────────────────────────────────────────────────────────────────
+function savePrompt(){
+  systemPrompt=document.getElementById('systemPrompt').value;
+  localStorage.setItem('haptica_trainer_prompt',systemPrompt);
+  setStatus('Prompt guardado localmente.','success');
+}
+
+async function syncPromptToDB(){
+  // Guarda el prompt actual como una corrección especial en BD para que el backend lo use
+  setStatus('Sincronizando prompt a BD...','info');
+  try {
+    var r=await apiFetch('/api/training/corrections',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        original_preview:'[PROMPT UPDATE]',
+        corrections:{__system_prompt__: document.getElementById('systemPrompt').value},
+        note:'Prompt actualizado manualmente desde entrenador'
+      })
+    });
+    var d=await r.json();
+    setStatus(d.ok?'Prompt sincronizado a BD ✓':'Error: '+(d.error||''),d.ok?'success':'error');
+  } catch(e){setStatus('Error: '+e.message,'error');}
+}
+
+function resetPrompt(){
+  if(confirm('¿Restaurar el prompt por defecto?')){
+    savePromptVersion('Restaurado a versión por defecto');
+    systemPrompt=DEFAULT_PROMPT;
+    document.getElementById('systemPrompt').value=DEFAULT_PROMPT;
+    localStorage.setItem('haptica_trainer_prompt',DEFAULT_PROMPT);
+    document.getElementById('promptVersion').textContent=promptVersions.length+1;
+  }
+}
+
+function savePromptVersion(reason){
+  promptVersions.unshift({prompt:systemPrompt,reason:reason,timestamp:new Date().toISOString()});
+  if(promptVersions.length>20)promptVersions=promptVersions.slice(0,20);
+  localStorage.setItem('haptica_trainer_versions',JSON.stringify(promptVersions));
+}
+
+function togglePromptHistory(){
+  var panel=document.getElementById('promptHistoryPanel');
+  var visible=panel.style.display!=='none';
+  panel.style.display=visible?'none':'block';
+  if(!visible)refreshVersionHistory();
+}
+
+function refreshVersionHistory(){
+  var list=document.getElementById('promptVersionList');
+  if(!list)return;
+  if(!promptVersions.length){list.innerHTML='<div style="color:#bbb;font-size:13px">Sin versiones anteriores.</div>';return;}
+  list.innerHTML=promptVersions.map(function(v,i){
+    var d=new Date(v.timestamp);
+    var lbl=d.toLocaleDateString('es-ES')+' '+d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});
+    return '<div class="version-item"><div class="v-header">'+
+      '<span class="v-meta">v'+(promptVersions.length-i)+' · '+lbl+'</span>'+
+      '<button class="btn-secondary btn-sm" data-vi="'+i+'">Restaurar</button></div>'+
+      '<div class="v-reason">'+esc(v.reason)+'</div>'+
+      '<pre>'+esc(v.prompt.substring(0,120))+'...</pre></div>';
+  }).join('');
+  list.querySelectorAll('button[data-vi]').forEach(function(btn){
+    btn.addEventListener('click',function(){restorePromptVersion(parseInt(btn.dataset.vi));});
+  });
+}
+
+function restorePromptVersion(idx){
+  if(!confirm('¿Restaurar esta versión?'))return;
+  savePromptVersion('Restauración manual');
+  systemPrompt=promptVersions[idx].prompt;
+  localStorage.setItem('haptica_trainer_prompt',systemPrompt);
+  document.getElementById('systemPrompt').value=systemPrompt;
+  document.getElementById('promptVersion').textContent=promptVersions.length+1;
+  refreshVersionHistory(); setStatus('Versión restaurada.','success');
+}
+
+function updateImproveBanner(){
+  var threshold=parseInt(document.getElementById('improveThreshold')?.value||'5');
+  var pct=Math.min(100,Math.round((correctionsSince/threshold)*100));
+  document.getElementById('improveProgress').style.width=pct+'%';
+  document.getElementById('improveMsg').textContent=
+    correctionsSince>=threshold
+    ?'¡'+correctionsSince+' correcciones! Prompt listo para mejora automática.'
+    :correctionsSince+' / '+threshold+' correcciones para mejora automática';
+  document.getElementById('improveBanner').style.display=correctionsSince>0?'flex':'none';
+}
+
+async function improvePrompt(){
+  if(!errorLog.length){setStatus('No hay correcciones registradas aún.','info');return;}
+  var btn=document.getElementById('btnImproveManual');
+  var btn2=document.getElementById('btnImproveNow');
+  [btn,btn2].forEach(function(b){if(b){b.disabled=true;b.textContent='Mejorando...';}});
+  setStatus('Enviando a IA para mejorar el prompt...','info');
+  var recent=errorLog.slice(-30);
+  var errorSummary=recent.map(function(e){return 'Campo "'+e.field+'": parseó "'+e.parsed+'" → correcto era "'+e.corrected+'"';}).join('\n');
+  var userMsg='PROMPT ACTUAL:\n'+systemPrompt+'\n\nERRORES DETECTADOS ('+recent.length+'):\n'+errorSummary+'\n\nReescribe el prompt corrigiendo estos errores.';
+  try {
+    var r=await apiFetch('/api/v3/parse-one',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text:'__IMPROVE_PROMPT__::'+userMsg, _meta:'improve'})
+    });
+    // El endpoint parse-one no sirve para esto — llamamos directamente a Gemini via el backend
+    // usando un endpoint especial de mejora de prompt
+    throw new Error('use_direct');
+  } catch(e){
+    // Fallback: mejorar prompt directamente desde el frontend llamando a Gemini
+    // (el trainer tiene acceso a la API via el proxy del backend)
+    try {
+      var r2=await apiFetch('/api/training/improve-prompt',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({current_prompt:systemPrompt, errors:recent})
+      });
+      var d=await r2.json();
+      if(d.ok&&d.new_prompt){
+        savePromptVersion('Mejora automática tras '+recent.length+' correcciones');
+        systemPrompt=d.new_prompt;
+        localStorage.setItem('haptica_trainer_prompt',systemPrompt);
+        document.getElementById('systemPrompt').value=systemPrompt;
+        document.getElementById('promptVersion').textContent=promptVersions.length+1;
+        correctionsSince=0;
+        localStorage.setItem('haptica_trainer_corr_count','0');
+        updateImproveBanner(); refreshVersionHistory();
+        setStatus('Prompt mejorado y guardado (v'+promptVersions.length+').','success');
+        switchTab('left','prompt');
+      } else {
+        setStatus('Error mejorando prompt: '+(d.error||'respuesta vacía'),'error');
+      }
+    } catch(e2){setStatus('Error: '+e2.message,'error');}
+  } finally {
+    [btn,btn2].forEach(function(b){if(b){b.disabled=false;b.textContent=b.id==='btnImproveNow'?'Mejorar ahora':'Mejorar con correcciones';}});
+  }
+}
+
+// ── ERRORES ───────────────────────────────────────────────────────────────────
+function refreshErrorLog(){
+  var el=document.getElementById('errorLog');
+  if(!errorLog.length){el.innerHTML='<div style="color:#bbb;font-size:13px">Sin errores registrados.</div>';return;}
+  var byField={};
+  errorLog.forEach(function(e){if(!byField[e.field])byField[e.field]=[];byField[e.field].push(e);});
+  el.innerHTML=Object.entries(byField).map(function(entry){
+    var f=entry[0], errs=entry[1];
+    return '<div class="error-log-item"><strong>'+(FIELD_LABELS[f]||f)+'</strong> — '+errs.length+' corrección(es)<br>'+
+      errs.slice(-2).map(function(e){return '<span style="color:#666">Parseó: "'+esc(e.parsed)+'" → Correcto: "'+esc(e.corrected)+'"</span>';}).join('<br>')+
+    '</div>';
+  }).join('');
+}
+function clearErrors(){
+  if(confirm('¿Limpiar todos los errores locales?')){
+    errorLog=[];localStorage.setItem('haptica_trainer_errors','[]');refreshErrorLog();
+  }
+}
+
+// ── EXPORTAR ──────────────────────────────────────────────────────────────────
+function updateExportPreview(){
+  var validated=history.filter(function(h){return h._validated||h._corrected;});
+  document.getElementById('exportStats').innerHTML=
+    '<div class="alert alert-info">'+validated.length+' validados / '+history.length+' total en historial local</div>';
+  if(validated.length>0){
+    var lines=[FIELDS.join(',')].concat(validated.map(function(h){
+      return FIELDS.map(function(f){return '"'+String(h[f]??'').replace(/"/g,'""')+'"';}).join(',');
+    }));
+    document.getElementById('exportPreview').textContent=lines.slice(0,5).join('\n')+(lines.length>5?'\n...':'');
+  }
+}
+function exportJSON(){
+  var toExp=history.filter(function(h){return h._validated||h._corrected;});
+  if(!toExp.length){alert('No hay registros validados.');return;}
+  dl('haptica_parsed_'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(toExp,null,2),'application/json');
+}
+function exportCSV(){
+  var toExp=history.filter(function(h){return h._validated||h._corrected;});
+  if(!toExp.length){alert('No hay registros validados.');return;}
+  var lines=[FIELDS.join(',')].concat(toExp.map(function(h){
+    return FIELDS.map(function(f){return '"'+String(h[f]??'').replace(/"/g,'""')+'"';}).join(',');
+  }));
+  dl('haptica_parsed_'+new Date().toISOString().slice(0,10)+'.csv',lines.join('\n'),'text/csv');
+}
+function clearHistory(){
+  if(confirm('¿Borrar todo el historial local?')){
+    history=[];localStorage.setItem('haptica_trainer_history','[]');
+    refreshHistory();updateExportPreview();
+  }
+}
+function dl(name,content,type){
+  var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:type}));a.download=name;a.click();
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function switchTab(side,name){
+  var prefix=side==='left'?['input','prompt','export']:['compare','correct','history','dbcorr','errors'];
+  prefix.forEach(function(t){document.getElementById('tab-'+t)?.classList.remove('active');});
+  document.getElementById('tab-'+name)?.classList.add('active');
+  var tabs=document.getElementById(side+'Tabs').querySelectorAll('.tab');
+  tabs.forEach(function(t){t.classList.remove('active');});
+  var idx=prefix.indexOf(name);
+  if(tabs[idx])tabs[idx].classList.add('active');
+  if(name==='dbcorr')loadDBCorrections();
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function apiFetch(path, opts){
+  opts=opts||{};opts.headers=opts.headers||{};
+  opts.headers['X-Password']=API_PWD;
+  return fetch(API_URL+path,opts);
+}
+function setStatus(msg,type){
+  var cls=type==='error'?'alert-error':type==='success'?'alert-success':type==='warn'?'alert-warn':'alert-info';
+  document.getElementById('statusMsg').innerHTML='<div class="alert '+cls+'">'+msg+'</div>';
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+</script>
+</body>
+</html>
