@@ -1384,8 +1384,9 @@ function deleteAnnotation(id) {
 
 // ── ENTRENAMIENTO IA — TABS ───────────────────────────────────────────────────
 function showTrTab(tab) {
-  ['correcciones','medicos','informe','estadotr'].forEach(function(t) {
-    document.getElementById('trpanel-'+t).style.display = t===tab ? 'block' : 'none';
+  ['parser','medicos','informe','estadotr'].forEach(function(t) {
+    var panel = document.getElementById('trpanel-'+t);
+    if(panel) panel.style.display = t===tab ? 'block' : 'none';
     var btn = document.getElementById('trtab-'+t);
     if(btn){ btn.style.background = t===tab ? '#7c3aed' : 'transparent'; btn.style.color = t===tab ? '#fff' : '#5b21b6'; }
   });
@@ -1396,14 +1397,11 @@ function showTrTab(tab) {
 
 function openTraining(){
   document.getElementById('training-modal').classList.add('open');
-  var sel=document.getElementById('tr-mediator');
-  sel.innerHTML='<option value="">Todos</option>'+MEDIATORS.map(function(m){return '<option value="'+m+'">'+m+'</option>';}).join('');
-  showTrTab('correcciones');
-  loadCorrectionsFromDB();
+  showTrTab('parser');
+  p2Init();
 }
 function closeTraining(){ document.getElementById('training-modal').classList.remove('open'); }
 
-// ── CORRECCIONES — sincronizadas con BD ───────────────────────────────────────
 function loadCorrectionsFromDB() {
   var el = document.getElementById('tr-corrections-list'); if(!el) return;
   apiFetch('/api/training/corrections').then(function(r){return r.json();}).then(function(d){
@@ -1792,46 +1790,6 @@ function _v3kpi(ico,val,label,col){
 var _trSelected=null;
 var _trCorrections=JSON.parse(localStorage.getItem('haptica_corrections')||'[]');
 
-function openTraining(){
-  document.getElementById('training-modal').classList.add('open');
-  var sel=document.getElementById('tr-mediator');
-  sel.innerHTML='<option value="">Todos</option>'+MEDIATORS.map(function(m){return '<option value="'+m+'">'+m+'</option>';}).join('');
-  loadCorrections();
-}
-function closeTraining(){document.getElementById('training-modal').classList.remove('open');}
-
-function trainSearch(){
-  var mediator=document.getElementById('tr-mediator').value;
-  var date=document.getElementById('tr-date').value;
-  var el=document.getElementById('tr-results');
-  el.innerHTML='<div class="loading"><div class="spinner"></div> Buscando...</div>';
-  var q='';
-  if(mediator) q+='mediator='+encodeURIComponent(mediator)+'&';
-  if(date) q+='from='+date+'&to='+date+'&';
-  apiFetch('/api/v3/reports?per_page=20&'+(q||'page=1'))
-    .then(function(r){return r.json();})
-    .then(function(d){
-      var items=d.data||d.reports||[];
-      if(!items.length){
-        return apiFetch('/api/reports?'+(q||'')).then(function(r){return r.json();}).then(function(d2){return d2.reports||[];});
-      }
-      return items;
-    })
-    .then(function(items){
-      if(!items.length){el.innerHTML='<div style="color:#94a3b8;font-size:.82rem;text-align:center;padding:1rem">Sin resultados.</div>';return;}
-      window._trItems=items;
-      el.innerHTML=items.map(function(r,i){
-        var hasV3=r.autoagresiones!=null||r.desayuno!=null;
-        return '<div onclick="selectTrainingReport('+i+',this)" style="cursor:pointer;padding:.6rem .9rem;border:1.5px solid #e5e7eb;border-radius:8px;margin-bottom:.3rem;font-size:.8rem;background:#fff">'+
-          '<div style="display:flex;justify-content:space-between;align-items:center">'+
-            '<span style="font-weight:600;color:#1e293b">'+(r.date||'—')+'</span>'+
-            '<span style="color:#64748b">'+(r.mediator||r.mediador||'—')+'</span>'+
-            '<span style="font-size:.7rem;padding:2px 6px;border-radius:10px;background:'+(hasV3?'#f0fdf4':'#fef9c3')+';color:'+(hasV3?'#16a34a':'#92400e')+'">'+(hasV3?'✓ V3':'Solo v1')+'</span></div>'+
-          '<div style="color:#94a3b8;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r.body_preview||'').slice(0,80)+'</div></div>';
-      }).join('');
-    })
-    .catch(function(e){el.innerHTML='<div style="color:#dc2626;font-size:.82rem">Error: '+e.message+'</div>';});
-}
 
 function selectTrainingReport(idx,el){
   document.querySelectorAll('#tr-results > div').forEach(function(d){d.style.borderColor='#e5e7eb';d.style.background='#fff';});
@@ -1967,6 +1925,454 @@ function adminMigrateV3() {
     .catch(function(e){ prog.textContent='❌ '+e.message; });
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PARSER V2 — lógica completa integrada en el dashboard
+// ═══════════════════════════════════════════════════════════════════════════
+
+var P2_FIELDS = ['mediador','fecha','turno','pis','caca','agua_ml','sueno_horas',
+  'estiramientos','autoagresiones','agresiones_mediador','agresiones_terceros','aleteos',
+  'medicacion','estado','desayuno','almuerzo','comida','merienda','cena',
+  'actividad','vocabulario','observaciones'];
+
+var P2_LABELS = {mediador:'Mediador',fecha:'Fecha informe',turno:'Turno',
+  pis:'Pis (veces)',caca:'Caca (veces)',agua_ml:'Agua (ml)',sueno_horas:'Sueño (h)',
+  estiramientos:'Estiramientos',autoagresiones:'Autoagresiones',
+  agresiones_mediador:'Agresiones mediador',agresiones_terceros:'Agresiones terceros',
+  aleteos:'Aleteos',medicacion:'Medicación',estado:'Estado ánimo',
+  desayuno:'Desayuno',almuerzo:'Almuerzo',comida:'Comida',merienda:'Merienda',cena:'Cena',
+  actividad:'Actividades',vocabulario:'Vocabulario',observaciones:'Observaciones'};
+
+var P2_EXAMPLES = {
+  1: '[12/2/26, 9:11:59] \nMediador: Jonathan Cuidador \nFecha: 11/02/2026 \nTurno: Noche \nBaño: Pis=4 / caca=0 \nAgua=550ml \nSueño: 3:25 \nPicos de conducta:0 \nEstiramientos:1 \nMedicacion: 1 gaba / 1 citrato de magnesio / 1 daridorexant / 20 gotas de Pau de Arco / Aloe Vera \nEstado: Normal, tranquilo',
+  2: '[12/2/26, 11:02:40] \nMediador: Raúl Blasco \nFecha: 11/02/2026 \nTurno: Mañana \nBaño: Pis=3 /caca=0 \nAgua: 1l \nComida: almuerzo: tortitas, anacardos, 2 mandarinas. \nPicos de conducta: 1 \nEstado: Expresivo y/o receptivo / Normal / contento \nVocabulario: braille, manualidades, cinta de correr, piscina \nActividades: Cinta de correr / Braile /Manualidades / Música / Piscina \nMedicación: 1 probiótico.'
+};
+
+var P2_GT = [
+  {label:'gregorioalexander · 15/02/2025 · tarde',mediador:'gregorioalexander',fecha:'2025-02-15',turno:'Tarde',pis:4,caca:0,agua_ml:600,sueno_horas:null,estiramientos:0,autoagresiones:0,agresiones_mediador:0,agresiones_terceros:0,aleteos:0,medicacion:'Letibalm labios / Ácido Bórico orejas',estado:'Tranquilo en desplazamientos/esperas y en actividad',desayuno:null,almuerzo:null,comida:'Sopa de pescado con quinoa, pollo con zanahoria, té',merienda:'Bocadillos de sardinas y jamón, mandarina',cena:'Crema de verduras, filete de pavo con tomate y queso curado, yogurt',actividad:'Piscina / Vestuario / Merienda Stadium / Tranvía / Paseo Goya / Cena',vocabulario:null,observaciones:'Tarjeta tranvía recargada'},
+  {label:'Elena · 16/02/2025 · mañana',mediador:'Elena',fecha:'2025-02-16',turno:'Mañana',pis:5,caca:1,agua_ml:600,sueno_horas:null,estiramientos:0,autoagresiones:0,agresiones_mediador:0,agresiones_terceros:0,aleteos:0,medicacion:'Fenvi',estado:'Tranquilo y contento',desayuno:'leche con galletas, batido de frutas',almuerzo:'bocadillo',comida:null,merienda:null,cena:null,actividad:'Rutina diaria / Aula multisensorial / Pelotas Bobath / Paseo / Masaje pies / Tarjetas braille',vocabulario:null,observaciones:'Estiramiento 0-5'},
+  {label:'Amalia · 16/02/2025 · tarde',mediador:'Amalia',fecha:'2025-02-16',turno:'Tarde',pis:4,caca:0,agua_ml:600,sueno_horas:null,estiramientos:0,autoagresiones:0,agresiones_mediador:0,agresiones_terceros:0,aleteos:0,medicacion:'Bálsamo labios',estado:'Contento, cariñoso y tranquilo',desayuno:null,almuerzo:null,comida:'Calabacín, zanahoria, salmón y té',merienda:'bocadillo jamón y sardinas, 2 naranjas',cena:'Borraja con patatas, muslo pollo asado, 2 croquetas',actividad:'Paseo canal / Parque / Centro de recursos / Cinta de correr / Tarjetas vocabulario',vocabulario:null,observaciones:'Pide baño / Pide comer / Pide rastrear'},
+  {label:'Jonathan · 11/02/2026 · noche',mediador:'Jonathan Cuidador',fecha:'2026-02-11',turno:'Noche',pis:4,caca:0,agua_ml:550,sueno_horas:3.42,estiramientos:1,autoagresiones:0,agresiones_mediador:0,agresiones_terceros:0,aleteos:0,medicacion:'1 gaba / 1 citrato de magnesio / 1 daridorexant / 20 gotas Pau de Arco / Aloe Vera',estado:'Normal, tranquilo',desayuno:null,almuerzo:null,comida:null,merienda:null,cena:null,actividad:null,vocabulario:null,observaciones:null},
+  {label:'Raúl Blasco · 11/02/2026 · mañana',mediador:'Raúl Blasco',fecha:'2026-02-11',turno:'Mañana',pis:3,caca:0,agua_ml:1000,sueno_horas:null,estiramientos:null,autoagresiones:0,agresiones_mediador:0,agresiones_terceros:0,aleteos:1,medicacion:'1 probiótico',estado:'Expresivo y/o receptivo / Normal / contento',desayuno:null,almuerzo:'tortitas, anacardos, 2 mandarinas',comida:null,merienda:null,cena:null,actividad:'Cinta de correr / Braille / Manualidades / Música / Piscina',vocabulario:'braille, manualidades, cinta de correr, piscina',observaciones:null}
+];
+
+var P2_DEFAULT_PROMPT = 'Eres un parser especializado en informes de mediación para personas con sordoceguera de la Fundación Háptica (Zaragoza).\nTu tarea es extraer campos estructurados de mensajes de WhatsApp escritos por mediadores.\n\nCAMPOS A EXTRAER (devuelve SIEMPRE todos, null si no aparece):\n- mediador: nombre del mediador (sin "(Mediador)", "(Mediadora)" ni emojis)\n- fecha: fecha del informe en formato YYYY-MM-DD (la fecha del TURNO reportado, no la del mensaje WhatsApp)\n- turno: "Mañana", "Tarde" o "Noche" (normaliza variantes: "mañanas"→"Mañana", "tardes"→"Tarde")\n- pis: número entero de veces que ha hecho pis\n- caca: número entero (0 si "no" o "cacas no")\n- agua_ml: agua bebida en mililitros como entero (convierte: "1l"/"1 litro"→1000, "1.5 litros"→1500, "500ml"→500, "0.5L"→500)\n- sueno_horas: horas de sueño como decimal ("3:25"→3.42, "7h30m"→7.5)\n- estiramientos: valor numérico 0-5 de la escala de estiramientos (null si no menciona)\n\nCONDUCTA — distingue siempre entre estos cuatro tipos:\n- autoagresiones: número de episodios donde Jorge se hace daño a sí mismo\n- agresiones_mediador: número de episodios donde agrede al mediador/a\n- agresiones_terceros: número de episodios de agresión a otras personas\n- aleteos: número de episodios de agitación SIN agresión física\nSi dice "picos de conducta: 0" o "sin incidencias" → todos a 0.\nSi dice "picos de conducta: 1" sin especificar tipo → autoagresiones:1, resto 0.\n\nALIMENTACIÓN — separa por tomas:\n- desayuno, almuerzo, comida, merienda, cena (null si no menciona)\n\n- medicacion: lista separada por " / "\n- estado: descripción del estado de ánimo\n- actividad: lista de actividades separadas por " / "\n- vocabulario: palabras/signos nuevos trabajados (null si no menciona)\n- observaciones: logros, notas adicionales\n\nREGLAS:\n1. La fecha del mensaje WhatsApp [entre corchetes] NO es la fecha del informe.\n2. Raúl Blasco: "1l", "1 litro" = siempre 1000ml.\n3. "Pis=4/caca=0" → pis:4, caca:0.\n4. Si dice "Comida: con Elena" sin más detalle → comida:null.\n5. Devuelve SOLO JSON válido, sin markdown, sin explicaciones.\n\nFORMATO: {"mediador":null,"fecha":null,"turno":null,"pis":null,"caca":null,"agua_ml":null,"sueno_horas":null,"estiramientos":null,"autoagresiones":null,"agresiones_mediador":null,"agresiones_terceros":null,"aleteos":null,"medicacion":null,"estado":null,"desayuno":null,"almuerzo":null,"comida":null,"merienda":null,"cena":null,"actividad":null,"vocabulario":null,"observaciones":null}';
+
+var P2_IMPROVE_PROMPT = 'Eres un experto en prompt engineering para sistemas de parseo de texto en español.\nSe te proporciona el prompt actual de un parser de informes de mediación y una lista de errores detectados.\nTu tarea: reescribe el prompt mejorándolo para corregir esos errores específicos.\nMantén toda la estructura y campos existentes. Añade reglas concretas para los patrones de error.\nNo elimines reglas que funcionen bien. Devuelve SOLO el prompt reescrito, sin explicaciones ni markdown.';
+
+// Estado local del parser v2
+var p2State = {
+  currentParsed: null,
+  currentGT: null,
+  history: JSON.parse(localStorage.getItem('p2_history') || '[]'),
+  errorLog: JSON.parse(localStorage.getItem('p2_errors') || '[]'),
+  prompt: localStorage.getItem('p2_prompt') || P2_DEFAULT_PROMPT,
+  promptVersions: JSON.parse(localStorage.getItem('p2_prompt_versions') || '[]'),
+  correctionsSince: parseInt(localStorage.getItem('p2_corrections_count') || '0')
+};
+
+function p2Init() {
+  document.getElementById('p2-system-prompt').value = p2State.prompt;
+  document.getElementById('p2-prompt-ver').textContent = p2State.promptVersions.length + 1;
+  var sel = document.getElementById('p2-gt-sel');
+  P2_GT.forEach(function(gt, i) {
+    var o = document.createElement('option');
+    o.value = i; o.textContent = gt.label;
+    sel.appendChild(o);
+  });
+  p2refreshHistory();
+  p2refreshErrors();
+  p2updateExportPreview();
+  p2updateBanner();
+}
+
+function p2switchTab(side, name) {
+  var leftTabs = ['input','prompt','export'];
+  var rightTabs = ['compare','correct','history','errors'];
+  var tabs = side === 'left' ? leftTabs : rightTabs;
+  tabs.forEach(function(t) {
+    var el = document.getElementById('p2tab-' + t);
+    if(el) el.style.display = 'none';
+    var btn = document.getElementById('p2' + (side==='left'?'l':'r') + 't-' + t);
+    if(btn) { btn.style.borderBottomColor = 'transparent'; btn.style.color = '#666'; btn.style.fontWeight = '400'; }
+  });
+  var active = document.getElementById('p2tab-' + name);
+  if(active) active.style.display = 'block';
+  var activeBtn = document.getElementById('p2' + (side==='left'?'l':'r') + 't-' + name);
+  if(activeBtn) { activeBtn.style.borderBottomColor = '#7c3aed'; activeBtn.style.color = '#7c3aed'; activeBtn.style.fontWeight = '500'; }
+}
+
+function p2LoadEx(n) { document.getElementById('p2-input').value = P2_EXAMPLES[n]; }
+function p2Clear() { document.getElementById('p2-input').value = ''; document.getElementById('p2-result').style.display='none'; document.getElementById('p2-status').innerHTML=''; p2State.currentParsed=null; }
+
+async function p2Parse() {
+  var msg = document.getElementById('p2-input').value.trim();
+  if(!msg) { p2setStatus('Pega un mensaje primero.','error'); return; }
+  var btn = document.getElementById('p2-parse-btn');
+  btn.disabled = true; btn.textContent = '⏳ Parseando...';
+  p2setStatus('Enviando a Claude...','info');
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        system: p2State.prompt,
+        messages: [{ role: 'user', content: msg }]
+      })
+    });
+    var data = await resp.json();
+    if(data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+    var raw = (data.content && data.content[0] && data.content[0].text) || '';
+    var clean = raw.replace(/```json|```/g,'').trim();
+    var parsed = JSON.parse(clean);
+    p2State.currentParsed = Object.assign({}, parsed, {_raw: msg, _timestamp: new Date().toISOString()});
+    p2renderResult(parsed);
+    p2addHistory(parsed, msg);
+    p2renderCorrectionForm(parsed);
+    if(p2State.currentGT !== null) p2renderComparison(parsed, P2_GT[p2State.currentGT]);
+    p2setStatus('✅ Parseado correctamente','success');
+    // Sincronizar con BD en background
+    p2syncToDB(parsed, msg);
+  } catch(e) {
+    p2setStatus('❌ Error: ' + e.message,'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Parsear con Claude';
+  }
+}
+
+function p2syncToDB(parsed, bodyText) {
+  // Guardar en reports_v3 si hay fecha y mediador
+  if(!parsed.fecha || !parsed.mediador) return;
+  apiFetch('/api/v3/parse-one', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ text: bodyText })
+  }).catch(function(){});
+}
+
+function p2renderResult(p) {
+  var groups = [
+    {label:'Identificación', fields:['mediador','fecha','turno']},
+    {label:'Baño / Hidratación / Sueño', fields:['pis','caca','agua_ml','sueno_horas']},
+    {label:'Conducta', fields:['estiramientos','autoagresiones','agresiones_mediador','agresiones_terceros','aleteos']},
+    {label:'Medicación / Estado', fields:['medicacion','estado']},
+    {label:'Alimentación', fields:['desayuno','almuerzo','comida','merienda','cena']},
+    {label:'Actividad', fields:['actividad','vocabulario']},
+    {label:'Observaciones', fields:['observaciones']}
+  ];
+  var score = p2calcScore(p);
+  var scoreCol = score>=70?'#4a9':score>=40?'#fa0':'#c44';
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><div style="font-size:.8rem;font-weight:600">Resultado parseado</div><span style="font-size:.78rem;font-weight:500;color:'+scoreCol+'">'+score+'% campos detectados</span></div>';
+  groups.forEach(function(g) {
+    html += '<div style="font-size:.68rem;font-weight:600;color:#4444aa;text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px;padding-bottom:3px;border-bottom:1px solid #e8e5ff">'+g.label+'</div>';
+    g.fields.forEach(function(f) {
+      var v = p[f];
+      var empty = v===null||v===undefined||v==='';
+      html += '<div style="display:flex;gap:6px;margin-bottom:3px;font-size:.75rem"><span style="color:#888;min-width:120px">'+P2_LABELS[f]+'</span><span style="color:'+(empty?'#ccc':'#1a1a1a')+';font-style:'+(empty?'italic':'normal')+'">'+(empty?'no detectado':String(v).replace(/</g,'&lt;'))+'</span></div>';
+    });
+  });
+  var el = document.getElementById('p2-result');
+  el.style.display = 'block';
+  el.innerHTML = html;
+}
+
+function p2calcScore(p) {
+  var filled = 0;
+  P2_FIELDS.forEach(function(f){ if(p[f]!==null&&p[f]!==undefined&&p[f]!=='') filled++; });
+  return Math.round((filled/P2_FIELDS.length)*100);
+}
+
+function p2LoadGT() {
+  var idx = document.getElementById('p2-gt-sel').value;
+  p2State.currentGT = idx==='' ? null : parseInt(idx);
+  if(p2State.currentGT!==null && p2State.currentParsed) p2renderComparison(p2State.currentParsed, P2_GT[p2State.currentGT]);
+  else document.getElementById('p2-compare-result').innerHTML = '<div style="background:#eef5ff;border:1px solid #bcd;border-radius:6px;padding:.6rem .8rem;font-size:.78rem;color:#336">Parsea un mensaje y selecciona un ground truth para ver la comparación.</div>';
+}
+
+function p2renderComparison(parsed, gt) {
+  var matchCount = 0, total = 0;
+  var rows = '';
+  P2_FIELDS.slice(0,-1).forEach(function(f) {
+    var gtv = gt[f];
+    if(gtv===null && (parsed[f]===null||parsed[f]===undefined||parsed[f]==='')) return;
+    total++;
+    var iaStr = parsed[f]!==null&&parsed[f]!==undefined ? String(parsed[f]) : '(no detectado)';
+    var gtStr = gtv!==null&&gtv!==undefined ? String(gtv) : '(sin referencia)';
+    var match = iaStr.toLowerCase().trim()===gtStr.toLowerCase().trim();
+    if(match) matchCount++;
+    var col = match ? '#4a9' : '#c44';
+    rows += '<div style="margin-bottom:8px"><div style="font-size:.68rem;color:#888;margin-bottom:2px">'+P2_LABELS[f]+'</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">'+
+      '<div style="background:#eef5ff;border:1.5px solid '+col+';border-radius:4px;padding:4px 7px;font-size:.72rem"><div style="font-size:.6rem;color:#4444aa;margin-bottom:1px">IA</div>'+iaStr+'</div>'+
+      '<div style="background:#f0fff4;border:1.5px solid '+col+';border-radius:4px;padding:4px 7px;font-size:.72rem"><div style="font-size:.6rem;color:#4a9;margin-bottom:1px">Referencia</div>'+gtStr+'</div>'+
+      '</div></div>';
+  });
+  var pct = total>0 ? Math.round((matchCount/total)*100) : 0;
+  var col = pct>=70?'#f0fff4':'#fff0f0'; var bcol = pct>=70?'#bdb':'#dbb'; var tcol = pct>=70?'#363':'#633';
+  document.getElementById('p2-compare-result').innerHTML = '<div style="background:'+col+';border:1px solid '+bcol+';border-radius:6px;padding:.4rem .7rem;font-size:.78rem;color:'+tcol+';margin-bottom:.5rem">Coincidencia: <strong>'+pct+'%</strong> ('+matchCount+'/'+total+' campos)</div>' + rows;
+}
+
+function p2renderCorrectionForm(parsed) {
+  var longFields = ['medicacion','estado','desayuno','almuerzo','comida','merienda','cena','actividad','vocabulario','observaciones'];
+  var html = '';
+  P2_FIELDS.forEach(function(f) {
+    var isLong = longFields.indexOf(f)>=0;
+    html += '<div style="margin-bottom:6px"><div style="font-size:.68rem;color:#888;margin-bottom:2px">'+P2_LABELS[f]+'</div>'+
+      (isLong ? '<textarea id="p2corr_'+f+'" style="width:100%;height:50px;padding:4px 6px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:.72rem;font-family:inherit;resize:vertical"></textarea>'
+               : '<input type="text" id="p2corr_'+f+'" style="width:100%;padding:4px 6px;border:1.5px solid #e5e7eb;border-radius:6px;font-size:.72rem;font-family:inherit">')+'</div>';
+  });
+  html += '<div style="display:flex;gap:.4rem;margin-top:.5rem"><button id="p2-save-corr" style="padding:6px 14px;border-radius:6px;border:none;background:#7c3aed;color:#fff;font-size:.78rem;font-weight:500;cursor:pointer;font-family:inherit">💾 Guardar corrección</button><button id="p2-save-ok" style="padding:6px 12px;border-radius:6px;border:1px solid #ccc;background:#fff;font-size:.78rem;cursor:pointer;font-family:inherit">✅ Marcar correcto</button></div><div id="p2-corr-msg" style="font-size:.75rem;margin-top:.3rem"></div>';
+  var container = document.getElementById('p2-correction-form');
+  container.innerHTML = html;
+  // Poblar valores
+  P2_FIELDS.forEach(function(f) {
+    var el = document.getElementById('p2corr_' + f);
+    if(!el) return;
+    var v = parsed[f];
+    el.value = (v!==null&&v!==undefined&&v!=='null') ? String(v) : '';
+  });
+  document.getElementById('p2-save-corr').addEventListener('click', p2saveCorrection);
+  document.getElementById('p2-save-ok').addEventListener('click', p2saveAsCorrect);
+}
+
+function p2saveCorrection() {
+  if(!p2State.currentParsed) return;
+  var errors = [];
+  P2_FIELDS.forEach(function(f) {
+    var el = document.getElementById('p2corr_'+f);
+    if(!el) return;
+    var orig = String(p2State.currentParsed[f]||'');
+    var corr = el.value;
+    if(orig.trim() !== corr.trim()) errors.push({field:f, parsed:orig, corrected:corr, timestamp:new Date().toISOString()});
+  });
+  if(!errors.length) { alert('No hay cambios respecto al parseo original.'); return; }
+  p2State.errorLog.push.apply(p2State.errorLog, errors);
+  localStorage.setItem('p2_errors', JSON.stringify(p2State.errorLog));
+  // Guardar en BD
+  apiFetch('/api/training/corrections', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      original_preview: p2State.currentParsed._raw || '',
+      corrections: errors.reduce(function(o,e){o[e.field]=e.corrected;return o;},{}),
+      note: 'parser_v2'
+    })
+  }).catch(function(){});
+  p2State.correctionsSince += errors.length;
+  localStorage.setItem('p2_corrections_count', p2State.correctionsSince);
+  p2updateBanner();
+  var threshold = parseInt(document.getElementById('p2-threshold').value||'5');
+  document.getElementById('p2-corr-msg').textContent = '✅ '+errors.length+' corrección(es) guardadas.';
+  document.getElementById('p2-corr-msg').style.color = '#4a9';
+  p2refreshErrors();
+  if(p2State.correctionsSince >= threshold) {
+    document.getElementById('p2-corr-msg').textContent += ' Umbral alcanzado — mejorando prompt...';
+    setTimeout(p2ImprovePrompt, 800);
+  }
+}
+
+function p2saveAsCorrect() {
+  if(!p2State.currentParsed) return;
+  var idx = p2State.history.findIndex(function(h){return h._timestamp===p2State.currentParsed._timestamp;});
+  if(idx>=0) p2State.history[idx]._validated = true;
+  localStorage.setItem('p2_history', JSON.stringify(p2State.history));
+  document.getElementById('p2-corr-msg').textContent = '✅ Marcado como correcto.';
+  document.getElementById('p2-corr-msg').style.color = '#4a9';
+}
+
+function p2addHistory(parsed, raw) {
+  var entry = Object.assign({}, parsed, {_raw: raw, _timestamp: new Date().toISOString()});
+  p2State.history.unshift(entry);
+  if(p2State.history.length > 100) p2State.history = p2State.history.slice(0,100);
+  localStorage.setItem('p2_history', JSON.stringify(p2State.history));
+  p2refreshHistory();
+}
+
+function p2refreshHistory() {
+  var total = p2State.history.length;
+  var ok = p2State.history.filter(function(h){return p2calcScore(h)>=70;}).length;
+  var warn = p2State.history.filter(function(h){var s=p2calcScore(h);return s>=40&&s<70;}).length;
+  var err = total-ok-warn;
+  document.getElementById('p2s-total').textContent = total;
+  document.getElementById('p2s-ok').textContent = ok;
+  document.getElementById('p2s-warn').textContent = warn;
+  document.getElementById('p2s-err').textContent = err;
+  if(!total) { document.getElementById('p2-history-list').innerHTML='<div style="color:#bbb;font-size:.8rem;text-align:center;padding:1rem">Sin parseos aún.</div>'; return; }
+  document.getElementById('p2-history-list').innerHTML = p2State.history.slice(0,20).map(function(h,i){
+    var score = p2calcScore(h);
+    var col = score>=70?'#4a9':score>=40?'#fa0':'#c44';
+    return '<div onclick="p2restoreHistory('+i+')" style="background:#fff;border:1px solid #e0ddd5;border-radius:8px;padding:9px;margin-bottom:5px;cursor:pointer;font-size:.75rem">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'+
+      '<span style="font-weight:600">'+(h.mediador||'—')+' · '+(h.fecha||'—')+'</span>'+
+      '<span style="color:'+col+';font-weight:500">'+score+'%</span>'+
+      '</div>'+
+      '<div style="color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(h._raw||'').slice(0,80)+'</div></div>';
+  }).join('');
+}
+
+function p2restoreHistory(idx) {
+  var h = p2State.history[idx];
+  if(!h) return;
+  p2State.currentParsed = h;
+  document.getElementById('p2-input').value = h._raw||'';
+  p2renderResult(h);
+  p2renderCorrectionForm(h);
+  p2switchTab('left','input');
+}
+
+function p2refreshErrors() {
+  if(!p2State.errorLog.length) { document.getElementById('p2-error-log').innerHTML='<div style="color:#bbb;font-size:.8rem">Sin errores registrados aún.</div>'; return; }
+  var counts = {};
+  p2State.errorLog.forEach(function(e){ counts[e.field]=(counts[e.field]||0)+1; });
+  document.getElementById('p2-error-log').innerHTML = Object.keys(counts).sort(function(a,b){return counts[b]-counts[a];}).map(function(f){
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:#fff0f0;border:1px solid #f9d;border-radius:6px;margin-bottom:4px;font-size:.75rem"><span><strong style="color:#c44">'+P2_LABELS[f]+'</strong></span><span style="color:#c44;font-weight:600">'+counts[f]+' errores</span></div>';
+  }).join('');
+}
+
+function p2SavePrompt() {
+  p2State.prompt = document.getElementById('p2-system-prompt').value;
+  localStorage.setItem('p2_prompt', p2State.prompt);
+  p2setStatus('Prompt guardado.','success');
+}
+
+function p2ResetPrompt() {
+  if(!confirm('¿Restaurar el prompt por defecto? El actual se guardará en el historial.')) return;
+  p2savePromptVersion('Restaurado a versión por defecto');
+  p2State.prompt = P2_DEFAULT_PROMPT;
+  document.getElementById('p2-system-prompt').value = P2_DEFAULT_PROMPT;
+  localStorage.setItem('p2_prompt', P2_DEFAULT_PROMPT);
+  document.getElementById('p2-prompt-ver').textContent = p2State.promptVersions.length + 1;
+}
+
+function p2savePromptVersion(reason) {
+  p2State.promptVersions.unshift({prompt: p2State.prompt, reason: reason, timestamp: new Date().toISOString()});
+  if(p2State.promptVersions.length > 20) p2State.promptVersions = p2State.promptVersions.slice(0,20);
+  localStorage.setItem('p2_prompt_versions', JSON.stringify(p2State.promptVersions));
+}
+
+function p2ToggleVersions() {
+  var panel = document.getElementById('p2-versions-panel');
+  var visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'block';
+  if(!visible) p2renderVersions();
+}
+
+function p2renderVersions() {
+  var list = document.getElementById('p2-versions-panel');
+  if(!p2State.promptVersions.length) { list.innerHTML='<div style="color:#bbb;font-size:.8rem">Sin versiones anteriores.</div>'; return; }
+  list.innerHTML = p2State.promptVersions.map(function(v,i){
+    return '<div style="background:#fff;border:1px solid #e0ddd5;border-radius:8px;padding:9px;margin-bottom:6px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'+
+      '<span style="font-size:.72rem;color:#888">v'+(p2State.promptVersions.length-i)+' · '+new Date(v.timestamp).toLocaleDateString('es-ES')+'</span>'+
+      '<button data-vi="'+i+'" style="font-size:.7rem;padding:3px 8px;border-radius:5px;border:1.5px solid #4444aa;color:#4444aa;background:#fff;cursor:pointer;font-family:inherit">Restaurar</button></div>'+
+      '<div style="font-size:.72rem;color:#555;margin-bottom:3px">'+v.reason+'</div>'+
+      '<pre style="font-size:.65rem;font-family:monospace;background:#f5f4f0;border-radius:4px;padding:5px;max-height:60px;overflow-y:auto;white-space:pre-wrap">'+v.prompt.substring(0,150).replace(/</g,'&lt;')+'...</pre></div>';
+  }).join('');
+  list.querySelectorAll('button[data-vi]').forEach(function(btn){
+    btn.addEventListener('click', function(){ p2restoreVersion(parseInt(btn.dataset.vi)); });
+  });
+}
+
+function p2restoreVersion(idx) {
+  if(!confirm('¿Restaurar esta versión?')) return;
+  p2savePromptVersion('Restauración manual');
+  p2State.prompt = p2State.promptVersions[idx].prompt;
+  localStorage.setItem('p2_prompt', p2State.prompt);
+  document.getElementById('p2-system-prompt').value = p2State.prompt;
+  document.getElementById('p2-prompt-ver').textContent = p2State.promptVersions.length + 1;
+  p2renderVersions();
+  p2setStatus('Versión restaurada.','success');
+}
+
+function p2updateBanner() {
+  var threshold = parseInt((document.getElementById('p2-threshold')||{value:'5'}).value||'5');
+  var pct = Math.min(100, Math.round((p2State.correctionsSince/threshold)*100));
+  var bar = document.getElementById('p2-improve-bar');
+  if(bar) bar.style.width = pct+'%';
+  var msg = document.getElementById('p2-improve-msg');
+  if(msg) msg.textContent = p2State.correctionsSince >= threshold
+    ? '¡'+p2State.correctionsSince+' correcciones! Prompt listo para mejorar.'
+    : p2State.correctionsSince+' / '+threshold+' correcciones para mejora automática';
+  var banner = document.getElementById('p2-improve-banner');
+  if(banner) banner.style.display = p2State.correctionsSince > 0 ? 'flex' : 'none';
+}
+
+async function p2ImprovePrompt() {
+  if(!p2State.errorLog.length) { p2setStatus('No hay correcciones registradas aún.','info'); return; }
+  p2setStatus('⏳ Mejorando prompt con Claude...','info');
+  var recent = p2State.errorLog.slice(-30);
+  var summary = recent.map(function(e){ return 'Campo "'+e.field+'": parseó "'+e.parsed+'" → correcto era "'+e.corrected+'"'; }).join('\n');
+  var userMsg = 'PROMPT ACTUAL:\n'+p2State.prompt+'\n\nERRORES DETECTADOS ('+recent.length+'):\n'+summary+'\n\nReescribe el prompt corrigiendo estos errores.';
+  try {
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model:'claude-sonnet-4-6', max_tokens:2000,
+        system: P2_IMPROVE_PROMPT,
+        messages:[{role:'user',content:userMsg}]
+      })
+    });
+    var data = await resp.json();
+    if(data.error) throw new Error(data.error.message);
+    var newPrompt = (data.content&&data.content[0]&&data.content[0].text||'').trim();
+    if(!newPrompt||newPrompt.length<100) throw new Error('Respuesta inválida');
+    p2savePromptVersion('Mejora automática tras '+recent.length+' correcciones');
+    p2State.prompt = newPrompt;
+    localStorage.setItem('p2_prompt', newPrompt);
+    document.getElementById('p2-system-prompt').value = newPrompt;
+    document.getElementById('p2-prompt-ver').textContent = p2State.promptVersions.length + 1;
+    p2State.correctionsSince = 0;
+    localStorage.setItem('p2_corrections_count','0');
+    p2updateBanner();
+    p2setStatus('✅ Prompt mejorado y guardado (v'+p2State.promptVersions.length+').','success');
+    p2switchTab('left','prompt');
+  } catch(e) {
+    p2setStatus('❌ Error al mejorar: '+e.message,'error');
+  }
+}
+
+function p2updateExportPreview() {
+  var validated = p2State.history.filter(function(h){return h._validated;});
+  var el = document.getElementById('p2-export-stats');
+  if(el) el.textContent = p2State.history.length+' parseados · '+validated.length+' validados · '+p2State.errorLog.length+' correcciones';
+  var prev = document.getElementById('p2-export-preview');
+  if(prev) prev.textContent = validated.length ? JSON.stringify(validated.slice(0,2), null, 2).replace(/_raw[^,]+,?/g,'') : '(sin datos validados aún)';
+}
+
+function p2ExportCSV() {
+  var validated = p2State.history.filter(function(h){return h._validated;});
+  if(!validated.length) { alert('No hay parseos validados aún. Parsea y valida algunos informes primero.'); return; }
+  var cols = P2_FIELDS;
+  var rows = [cols.join(',')].concat(validated.map(function(r){ return cols.map(function(f){ var v=r[f]; return v===null||v===undefined?'':'"'+String(v).replace(/"/g,'""')+'"'; }).join(','); }));
+  var blob = new Blob([rows.join('\n')], {type:'text/csv;charset=utf-8'});
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'parseos_haptica.csv'; a.click();
+}
+
+function p2ExportJSON() {
+  var validated = p2State.history.filter(function(h){return h._validated;});
+  if(!validated.length) { alert('No hay parseos validados aún.'); return; }
+  var blob = new Blob([JSON.stringify(validated, null, 2)], {type:'application/json'});
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'parseos_haptica.json'; a.click();
+}
+
+function p2ClearHistory() {
+  if(!confirm('¿Borrar todo el historial local del parser?')) return;
+  p2State.history = []; p2State.errorLog = [];
+  localStorage.setItem('p2_history','[]'); localStorage.setItem('p2_errors','[]');
+  p2refreshHistory(); p2refreshErrors(); p2updateExportPreview();
+}
+
+function p2setStatus(msg, type) {
+  var col = type==='error'?'#fff0f0':type==='success'?'#f0fff4':'#eef5ff';
+  var bcol = type==='error'?'#dbb':type==='success'?'#bdb':'#bcd';
+  var tcol = type==='error'?'#633':type==='success'?'#363':'#336';
+  document.getElementById('p2-status').innerHTML = '<div style="background:'+col+';border:1px solid '+bcol+';border-radius:6px;padding:6px 10px;font-size:.78rem;color:'+tcol+';margin-top:.3rem">'+msg+'</div>';
+}
+
+
 </script>
 
 <!-- MODAL ANOTACIONES -->
@@ -2040,69 +2446,138 @@ function adminMigrateV3() {
 
 <!-- MODAL ENTRENAMIENTO IA -->
 <div class="modal-overlay" id="training-modal">
-  <div class="modal" style="max-width:780px;max-height:94vh;display:flex;flex-direction:column">
+  <div class="modal" style="max-width:920px;max-height:96vh;display:flex;flex-direction:column">
     <div class="modal-hdr" style="background:linear-gradient(135deg,#5b21b6,#7c3aed)">
-      <h3>🤖 Entrenamiento IA — Corrección y aprendizaje</h3>
+      <h3>🤖 Entrenamiento IA — Parser v2</h3>
       <button class="modal-close" onclick="closeTraining()">✕</button>
     </div>
-    <!-- Tabs internos -->
-    <div style="display:flex;gap:2px;padding:8px 12px;background:#f5f3ff;border-bottom:1px solid #ddd6fe">
-      <button class="tr-tab active" onclick="showTrTab('correcciones')" id="trtab-correcciones" style="padding:5px 14px;border-radius:6px;border:none;font-size:.8rem;font-weight:500;cursor:pointer;background:#7c3aed;color:#fff;font-family:inherit">✏️ Correcciones</button>
-      <button class="tr-tab" onclick="showTrTab('medicos')" id="trtab-medicos" style="padding:5px 14px;border-radius:6px;border:none;font-size:.8rem;font-weight:500;cursor:pointer;background:transparent;color:#5b21b6;font-family:inherit">🏥 Docs médicos</button>
-      <button class="tr-tab" onclick="showTrTab('informe')" id="trtab-informe" style="padding:5px 14px;border-radius:6px;border:none;font-size:.8rem;font-weight:500;cursor:pointer;background:transparent;color:#5b21b6;font-family:inherit">📊 Informe mensual</button>
-      <button class="tr-tab" onclick="showTrTab('estadotr')" id="trtab-estadotr" style="padding:5px 14px;border-radius:6px;border:none;font-size:.8rem;font-weight:500;cursor:pointer;background:transparent;color:#5b21b6;font-family:inherit">📈 Estado IA</button>
+    <div style="display:flex;gap:2px;padding:8px 12px;background:#f5f3ff;border-bottom:1px solid #ddd6fe;flex-wrap:wrap">
+      <button class="tr-tab active" onclick="showTrTab('parser')"    id="trtab-parser"     style="padding:5px 14px;border-radius:6px;border:none;font-size:.8rem;font-weight:500;cursor:pointer;background:#7c3aed;color:#fff;font-family:inherit">🧪 Parser IA</button>
+      <button class="tr-tab"        onclick="showTrTab('medicos')"   id="trtab-medicos"    style="padding:5px 14px;border-radius:6px;border:none;font-size:.8rem;font-weight:500;cursor:pointer;background:transparent;color:#5b21b6;font-family:inherit">🏥 Docs médicos</button>
+      <button class="tr-tab"        onclick="showTrTab('informe')"   id="trtab-informe"    style="padding:5px 14px;border-radius:6px;border:none;font-size:.8rem;font-weight:500;cursor:pointer;background:transparent;color:#5b21b6;font-family:inherit">📊 Informe mensual</button>
+      <button class="tr-tab"        onclick="showTrTab('estadotr')"  id="trtab-estadotr"   style="padding:5px 14px;border-radius:6px;border:none;font-size:.8rem;font-weight:500;cursor:pointer;background:transparent;color:#5b21b6;font-family:inherit">📈 Estado IA</button>
     </div>
     <div style="padding:1rem;overflow-y:auto;flex:1">
 
-      <!-- TAB CORRECCIONES -->
-      <div id="trpanel-correcciones">
-        <div style="background:#f5f3ff;border-left:3px solid #7c3aed;border-radius:6px;padding:.6rem 1rem;font-size:.8rem;color:#4c1d95;margin-bottom:.8rem;line-height:1.5">
-          <strong>¿Cómo funciona?</strong> Cada corrección que guardes se sincroniza con la BD y se usa automáticamente en los próximos parseos (few-shot learning). Cuantas más correcciones validadas haya, más precisa será la IA.
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:.5rem;margin-bottom:.8rem;align-items:end">
-          <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:3px">Mediador</div>
-            <select id="tr-mediator" style="width:100%;padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.83rem;font-family:inherit"><option value="">Todos</option></select></div>
-          <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:3px">Fecha</div>
-            <input type="date" id="tr-date" style="width:100%;padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.83rem;font-family:inherit"></div>
-          <button onclick="trainSearch()" style="padding:8px 16px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:.83rem;font-weight:600;cursor:pointer;font-family:inherit">🔍 Buscar</button>
-        </div>
-        <div id="tr-results" style="margin-bottom:.8rem">
-          <div style="color:#94a3b8;font-size:.82rem;text-align:center;padding:1.5rem">Busca un informe para revisar su parseo</div>
-        </div>
-        <div id="tr-correction-panel" style="display:none">
-          <div style="border-top:2px solid #7c3aed;padding-top:.8rem;margin-top:.5rem">
-            <div style="font-size:.82rem;font-weight:700;color:#5b21b6;margin-bottom:.6rem">✏️ Corrección</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-bottom:.8rem">
-              <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:.3rem">📄 Texto original</div>
-                <div id="tr-original-text" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:.7rem;font-size:.75rem;line-height:1.6;max-height:160px;overflow-y:auto;white-space:pre-wrap;font-family:monospace;color:#374151"></div></div>
-              <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:.3rem">🤖 Interpretación IA</div>
-                <div id="tr-ia-result" style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:.7rem;font-size:.75rem;line-height:1.8;max-height:160px;overflow-y:auto"></div></div>
+      <!-- TAB PARSER IA (parser_v2 integrado) -->
+      <div id="trpanel-parser">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;height:100%">
+
+          <!-- IZQUIERDA: input + resultado -->
+          <div style="display:flex;flex-direction:column;gap:.6rem">
+            <div style="display:flex;gap:4px;border-bottom:1px solid #ddd;margin-bottom:.3rem">
+              <div class="p2tab active" id="p2lt-input"   onclick="p2switchTab('left','input')"  style="padding:7px 14px;font-size:.8rem;cursor:pointer;border-bottom:2px solid #7c3aed;color:#7c3aed;font-weight:500">Parsear</div>
+              <div class="p2tab"        id="p2lt-prompt"  onclick="p2switchTab('left','prompt')" style="padding:7px 14px;font-size:.8rem;cursor:pointer;border-bottom:2px solid transparent;color:#666">Prompt IA</div>
+              <div class="p2tab"        id="p2lt-export"  onclick="p2switchTab('left','export')" style="padding:7px 14px;font-size:.8rem;cursor:pointer;border-bottom:2px solid transparent;color:#666">Exportar</div>
             </div>
-            <div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:.4rem">🎯 Campos a corregir (deja en blanco los correctos)</div>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.6rem" id="tr-fields"></div>
-            <div style="display:flex;align-items:center;gap:.5rem">
-              <input type="text" id="tr-note" placeholder="Nota sobre el error (opcional)" style="flex:1;padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.82rem;font-family:inherit">
-              <button onclick="saveCorrection()" style="padding:8px 18px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:.83rem;font-weight:600;cursor:pointer;font-family:inherit">💾 Guardar y sincronizar</button>
+
+            <!-- Sub-tab: Parsear -->
+            <div id="p2tab-input">
+              <div style="font-size:.72rem;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Mensaje WhatsApp</div>
+              <textarea id="p2-input" style="width:100%;height:160px;border:1.5px solid #ddd;border-radius:8px;padding:9px;font-family:monospace;font-size:.75rem;resize:vertical;background:#fafaf8" placeholder="Pega aquí el mensaje del mediador..."></textarea>
+              <div style="display:flex;gap:.4rem;margin:.4rem 0">
+                <button id="p2-parse-btn" onclick="p2Parse()" style="padding:7px 16px;border-radius:6px;border:none;background:#4444aa;color:#fff;font-size:.8rem;font-weight:500;cursor:pointer;font-family:inherit">Parsear con Claude</button>
+                <button onclick="p2LoadEx(1)" style="padding:7px 10px;border-radius:6px;border:1px solid #ccc;background:#fff;font-size:.75rem;cursor:pointer;font-family:inherit">Ej. Jonathan</button>
+                <button onclick="p2LoadEx(2)" style="padding:7px 10px;border-radius:6px;border:1px solid #ccc;background:#fff;font-size:.75rem;cursor:pointer;font-family:inherit">Ej. Raúl</button>
+                <button onclick="p2Clear()"   style="padding:7px 10px;border-radius:6px;border:1px solid #ccc;background:#fff;font-size:.75rem;cursor:pointer;font-family:inherit">Limpiar</button>
+              </div>
+              <div id="p2-status"></div>
+              <div id="p2-result" style="display:none;margin-top:.5rem"></div>
             </div>
-            <div id="tr-save-msg" style="font-size:.8rem;margin-top:.4rem"></div>
+
+            <!-- Sub-tab: Prompt IA -->
+            <div id="p2tab-prompt" style="display:none">
+              <div id="p2-improve-banner" style="display:none;background:#fff8e1;border:1px solid #f5c842;border-radius:8px;padding:8px 12px;margin-bottom:.5rem;display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <span id="p2-improve-msg" style="font-size:.78rem;color:#6b4c00"></span>
+                <div style="flex:1;background:#eee;border-radius:4px;height:5px;margin:0 8px"><div id="p2-improve-bar" style="background:#f5c842;border-radius:4px;height:5px;width:0%"></div></div>
+                <button id="p2-improve-now" onclick="p2ImprovePrompt()" style="padding:4px 10px;border-radius:5px;border:none;background:#4444aa;color:#fff;font-size:.73rem;cursor:pointer;font-family:inherit">Mejorar ahora</button>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                <div style="font-size:.72rem;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.5px">Prompt activo (v<span id="p2-prompt-ver">1</span>)</div>
+                <div style="font-size:.7rem;color:#888">Umbral mejora auto:
+                  <select id="p2-threshold" style="width:50px;padding:2px 4px;font-size:.7rem" onchange="p2updateBanner()">
+                    <option value="3">3</option><option value="5" selected>5</option><option value="10">10</option><option value="20">20</option>
+                  </select> correcciones
+                </div>
+              </div>
+              <textarea id="p2-system-prompt" style="width:100%;height:260px;border:1.5px solid #ddd;border-radius:8px;padding:9px;font-family:monospace;font-size:.7rem;resize:vertical;background:#fafaf8"></textarea>
+              <div style="display:flex;gap:.4rem;margin-top:.4rem;flex-wrap:wrap">
+                <button onclick="p2SavePrompt()"         style="padding:5px 10px;border-radius:5px;border:none;background:#4444aa;color:#fff;font-size:.73rem;cursor:pointer;font-family:inherit">Guardar</button>
+                <button onclick="p2ImprovePrompt()"      style="padding:5px 10px;border-radius:5px;border:1px solid #ccc;background:#fff;font-size:.73rem;cursor:pointer;font-family:inherit">Mejorar con errores</button>
+                <button onclick="p2ToggleVersions()"     style="padding:5px 10px;border-radius:5px;border:1px solid #ccc;background:#fff;font-size:.73rem;cursor:pointer;font-family:inherit">Historial versiones</button>
+                <button onclick="p2ResetPrompt()"        style="padding:5px 10px;border-radius:5px;border:1px solid #ccc;background:#fff;font-size:.73rem;cursor:pointer;font-family:inherit">Restaurar defecto</button>
+              </div>
+              <div id="p2-versions-panel" style="display:none;margin-top:.6rem"></div>
+            </div>
+
+            <!-- Sub-tab: Exportar -->
+            <div id="p2tab-export" style="display:none">
+              <div style="background:#eef5ff;border:1px solid #bcd;border-radius:6px;padding:.5rem .8rem;font-size:.78rem;color:#336;margin-bottom:.5rem">Exporta los parseos validados en formato compatible con Railway.</div>
+              <div id="p2-export-stats" style="font-size:.78rem;color:#666;margin-bottom:.5rem"></div>
+              <div style="display:flex;gap:.5rem;margin-bottom:.5rem">
+                <button onclick="p2ExportCSV()"  style="padding:6px 12px;border-radius:6px;border:none;background:#4444aa;color:#fff;font-size:.78rem;cursor:pointer;font-family:inherit">Descargar CSV</button>
+                <button onclick="p2ExportJSON()" style="padding:6px 12px;border-radius:6px;border:1px solid #ccc;background:#fff;font-size:.78rem;cursor:pointer;font-family:inherit">Descargar JSON</button>
+                <button onclick="p2ClearHistory()" style="padding:6px 12px;border-radius:6px;border:none;background:#c44;color:#fff;font-size:.73rem;cursor:pointer;font-family:inherit">Borrar historial local</button>
+              </div>
+              <div id="p2-export-preview" style="font-size:.7rem;font-family:monospace;background:#f5f5f5;border-radius:6px;padding:8px;max-height:200px;overflow-y:auto"></div>
+            </div>
           </div>
-        </div>
-        <div style="border-top:1px solid #e5e7eb;padding-top:.8rem;margin-top:.8rem">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-            <div style="font-size:.78rem;font-weight:600;color:#374151">📚 Correcciones en BD</div>
-            <div style="display:flex;gap:.4rem">
-              <button onclick="loadCorrectionsFromDB()" style="font-size:.73rem;color:#7c3aed;background:none;border:none;cursor:pointer;font-family:inherit">↻ Actualizar</button>
-              <button onclick="exportCorrections()" style="font-size:.73rem;padding:4px 8px;border-radius:5px;border:1.5px solid #7c3aed;color:#7c3aed;background:#fff;cursor:pointer;font-family:inherit">📥 Exportar</button>
+
+          <!-- DERECHA: comparar / corregir / historial / errores -->
+          <div style="display:flex;flex-direction:column;gap:.6rem">
+            <div style="display:flex;gap:4px;border-bottom:1px solid #ddd;margin-bottom:.3rem">
+              <div class="p2tab active" id="p2rt-compare"  onclick="p2switchTab('right','compare')"  style="padding:7px 10px;font-size:.78rem;cursor:pointer;border-bottom:2px solid #7c3aed;color:#7c3aed;font-weight:500">Comparar</div>
+              <div class="p2tab"        id="p2rt-correct"  onclick="p2switchTab('right','correct')"  style="padding:7px 10px;font-size:.78rem;cursor:pointer;border-bottom:2px solid transparent;color:#666">Corregir</div>
+              <div class="p2tab"        id="p2rt-history"  onclick="p2switchTab('right','history')"  style="padding:7px 10px;font-size:.78rem;cursor:pointer;border-bottom:2px solid transparent;color:#666">Historial</div>
+              <div class="p2tab"        id="p2rt-errors"   onclick="p2switchTab('right','errors')"   style="padding:7px 10px;font-size:.78rem;cursor:pointer;border-bottom:2px solid transparent;color:#666">Errores</div>
+            </div>
+
+            <!-- Comparar con ground truth -->
+            <div id="p2tab-compare">
+              <div style="background:#fff;border:1px solid #ddd;border-radius:8px;padding:10px;margin-bottom:.5rem">
+                <div style="font-size:.75rem;color:#666;margin-bottom:.4rem">Selecciona un informe de referencia para comparar campo a campo:</div>
+                <select id="p2-gt-sel" onchange="p2LoadGT()" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:.78rem;font-family:inherit">
+                  <option value="">— Sin comparación —</option>
+                </select>
+              </div>
+              <div id="p2-compare-result">
+                <div style="background:#eef5ff;border:1px solid #bcd;border-radius:6px;padding:.6rem .8rem;font-size:.78rem;color:#336">Parsea un mensaje y selecciona un ground truth para ver la comparación.</div>
+              </div>
+            </div>
+
+            <!-- Corregir -->
+            <div id="p2tab-correct" style="display:none">
+              <div style="background:#eef5ff;border:1px solid #bcd;border-radius:6px;padding:.5rem .8rem;font-size:.78rem;color:#336;margin-bottom:.5rem">Corrige los campos erróneos. Los errores se guardan en BD y mejoran el prompt.</div>
+              <div id="p2-correction-form">
+                <div style="background:#eef5ff;border:1px solid #bcd;border-radius:6px;padding:.6rem .8rem;font-size:.78rem;color:#336">Primero parsea un mensaje.</div>
+              </div>
+            </div>
+
+            <!-- Historial -->
+            <div id="p2tab-history" style="display:none">
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;margin-bottom:.6rem" id="p2-stats-row">
+                <div style="background:#fff;border:1px solid #e0ddd5;border-radius:8px;padding:8px;text-align:center"><div style="font-size:1.2rem;font-weight:500" id="p2s-total">0</div><div style="font-size:.68rem;color:#888">Parseados</div></div>
+                <div style="background:#fff;border:1px solid #e0ddd5;border-radius:8px;padding:8px;text-align:center"><div style="font-size:1.2rem;font-weight:500;color:#4a9" id="p2s-ok">0</div><div style="font-size:.68rem;color:#888">Score alto</div></div>
+                <div style="background:#fff;border:1px solid #e0ddd5;border-radius:8px;padding:8px;text-align:center"><div style="font-size:1.2rem;font-weight:500;color:#fa0" id="p2s-warn">0</div><div style="font-size:.68rem;color:#888">Score medio</div></div>
+                <div style="background:#fff;border:1px solid #e0ddd5;border-radius:8px;padding:8px;text-align:center"><div style="font-size:1.2rem;font-weight:500;color:#c44" id="p2s-err">0</div><div style="font-size:.68rem;color:#888">Score bajo</div></div>
+              </div>
+              <div id="p2-history-list"><div style="color:#bbb;font-size:.8rem;text-align:center;padding:1rem">Sin parseos aún.</div></div>
+            </div>
+
+            <!-- Errores frecuentes -->
+            <div id="p2tab-errors" style="display:none">
+              <div style="background:#eef5ff;border:1px solid #bcd;border-radius:6px;padding:.5rem .8rem;font-size:.78rem;color:#336;margin-bottom:.5rem">Errores detectados automáticamente o marcados manualmente. Se usan para mejorar el prompt.</div>
+              <div id="p2-error-log"><div style="color:#bbb;font-size:.8rem">Sin errores registrados aún.</div></div>
             </div>
           </div>
-          <div id="tr-corrections-list" style="font-size:.78rem;color:#94a3b8">Cargando...</div>
-        </div>
-      </div>
+
+        </div><!-- /grid -->
+      </div><!-- /trpanel-parser -->
 
       <!-- TAB DOCS MÉDICOS -->
       <div id="trpanel-medicos" style="display:none">
         <div style="background:#eff6ff;border-left:3px solid #2563eb;border-radius:6px;padding:.6rem 1rem;font-size:.8rem;color:#1e40af;margin-bottom:.8rem;line-height:1.5">
-          <strong>Documentos médicos</strong> — Sube informes clínicos o imágenes de documentos médicos. Gemini los analiza y extrae contexto clínico relevante que se usa para enriquecer el análisis y las predicciones de conducta.
+          <strong>Documentos médicos</strong> — Sube informes clínicos o imágenes. Gemini los analiza y extrae contexto clínico relevante para enriquecer el análisis de conducta.
         </div>
         <div style="display:flex;gap:.5rem;margin-bottom:.8rem;align-items:center">
           <label style="flex:1;border:2px dashed #ddd6fe;border-radius:10px;padding:.8rem;text-align:center;cursor:pointer;background:#fafafa;font-size:.82rem;color:#6b7280" for="med-file-input">
@@ -2112,15 +2587,13 @@ function adminMigrateV3() {
           <input type="file" id="med-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" style="display:none" onchange="uploadMedical(this.files[0])">
         </div>
         <div id="med-upload-status" style="display:none;font-size:.82rem;padding:.5rem .8rem;border-radius:7px;margin-bottom:.8rem"></div>
-        <div id="med-documents-list">
-          <div style="color:#94a3b8;font-size:.82rem;text-align:center;padding:1rem">Cargando documentos...</div>
-        </div>
+        <div id="med-documents-list"><div style="color:#94a3b8;font-size:.82rem;text-align:center;padding:1rem">Cargando documentos...</div></div>
       </div>
 
       <!-- TAB INFORME MENSUAL -->
       <div id="trpanel-informe" style="display:none">
         <div style="background:#f0fdf4;border-left:3px solid #16a34a;border-radius:6px;padding:.6rem 1rem;font-size:.8rem;color:#14532d;margin-bottom:.8rem;line-height:1.5">
-          <strong>Informe mensual con IA</strong> — Genera un análisis completo del mes seleccionado con resumen ejecutivo, análisis de conducta, bienestar físico, tendencias y <strong>predicciones para el próximo mes</strong>.
+          <strong>Informe mensual con IA</strong> — Análisis completo del mes con resumen ejecutivo, conducta, bienestar físico, tendencias y predicciones para el próximo mes.
         </div>
         <div style="display:flex;gap:.5rem;margin-bottom:.8rem;align-items:end">
           <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:3px">Año</div>
@@ -2135,16 +2608,12 @@ function adminMigrateV3() {
           <button onclick="generateMonthlyReport()" style="padding:8px 18px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-size:.83rem;font-weight:600;cursor:pointer;font-family:inherit">✨ Generar informe</button>
           <button onclick="exportMonthlyReport()" id="btn-export-report" style="display:none;padding:8px 14px;border-radius:8px;border:1.5px solid #16a34a;color:#16a34a;background:#fff;font-size:.83rem;font-weight:600;cursor:pointer;font-family:inherit">📥 Exportar JSON</button>
         </div>
-        <div id="monthly-report-content">
-          <div style="color:#94a3b8;font-size:.82rem;text-align:center;padding:2rem">Selecciona un mes y pulsa Generar informe</div>
-        </div>
+        <div id="monthly-report-content"><div style="color:#94a3b8;font-size:.82rem;text-align:center;padding:2rem">Selecciona un mes y pulsa Generar informe</div></div>
       </div>
 
       <!-- TAB ESTADO IA -->
       <div id="trpanel-estadotr" style="display:none">
-        <div id="tr-ia-stats-content">
-          <div class="loading"><div class="spinner"></div> Cargando...</div>
-        </div>
+        <div id="tr-ia-stats-content"><div class="loading"><div class="spinner"></div> Cargando...</div></div>
       </div>
 
     </div>
