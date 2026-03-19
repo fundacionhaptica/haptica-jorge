@@ -1173,19 +1173,45 @@ function openDetail(idx) {
     '<div class="d-stat"><div class="d-stat-val"><span class="badge '+(MOOD_CLASS[r.mood]||'b-q')+'">'+(MOOD_LABEL[r.mood]||'?')+'</span></div><div class="d-stat-label">Ánimo mediador</div></div>' +
     '<div class="d-stat"><div class="d-stat-val" style="font-size:1.4rem">' + estadoEmoji + ' ' + estadoNum + '/5</div><div class="d-stat-label">Estado medio</div></div>' +
     '<div class="d-stat"><div class="d-stat-val">'+(r.agua?r.agua+'ml':'—')+'</div><div class="d-stat-label">Hidratación</div></div>' +
-    '<div class="d-stat"><div class="d-stat-val">'+(r.conducta>0?'⚠️ '+r.conducta+' pico'+(r.conducta!==1?'s':''):'✅ Sin picos')+'</div><div class="d-stat-label">Conducta</div></div>' +
+    '<div class="d-stat"><div class="d-stat-val">'+(r.autoagresiones!=null?(r.autoagresiones+r.agresiones_mediador+(r.agresiones_terceros||0)+(r.aleteos||0))>0?'⚠️ '+(r.autoagresiones+r.agresiones_mediador+(r.agresiones_terceros||0)+(r.aleteos||0))+'ep.':'✅ Sin picos':r.conducta>0?'⚠️ '+r.conducta+' pico'+(r.conducta!==1?'s':''):'✅ Sin picos')+'</div><div class="d-stat-label">Conducta</div></div>' +
     '<div class="d-stat"><div class="d-stat-val">'+(r.pis!=null?r.pis+' veces':'—')+'</div><div class="d-stat-label">Pis</div></div>' +
     '<div class="d-stat"><div class="d-stat-val">'+(r.estiramientos?'✅':'—')+'</div><div class="d-stat-label">Estiramientos</div></div>' +
     '</div>';
   var sec = function(icon, title, val) { return val ? '<div class="ps"><div class="ps-title">'+icon+' '+title+'</div><div class="dtext">'+val+'</div></div>' : ''; };
+  // Conducta desglosada V3 (si está disponible)
+  var hasV3cond = r.autoagresiones!=null||r.agresiones_mediador!=null||r.aleteos!=null;
+  if(hasV3cond) {
+    html += '<div class="ps"><div class="ps-title">⚡ Conducta detallada (IA)</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">'+
+      '<span style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:3px 8px;font-size:.78rem">🤜 Autoagresiones: '+(r.autoagresiones||0)+'</span>'+
+      '<span style="background:#fff7ed;border:1px solid #fdba74;border-radius:6px;padding:3px 8px;font-size:.78rem">👊 Agres. mediador: '+(r.agresiones_mediador||0)+'</span>'+
+      '<span style="background:#f5f3ff;border:1px solid #c4b5fd;border-radius:6px;padding:3px 8px;font-size:.78rem">🚨 Agres. terceros: '+(r.agresiones_terceros||0)+'</span>'+
+      '<span style="background:#eff6ff;border:1px solid #93c5fd;border-radius:6px;padding:3px 8px;font-size:.78rem">🌀 Aleteos: '+(r.aleteos||0)+'</span>'+
+      '</div></div>';
+  }
   html += sec('🚿','Baño', r.banyo);
+  if(r.sueno_horas) html += sec('💤','Sueño', r.sueno_horas + ' h');
   html += sec('🌡️','Estado', r.estado);
   html += sec('💬','Comunicación', r.comunicacion);
-  if(vocab.length) html += '<div class="ps"><div class="ps-title">🗣️ Vocabulario</div><div class="chips">'+vocab.map(function(w){return '<span class="chip">'+w+'</span>';}).join('')+'</div></div>';
-  html += sec('🎯','Actividades', r.actividades);
-  html += sec('🍽️','Comidas', r.comidas);
+  // Vocabulario: preferir el de V3 (texto) si existe, si no usar el array legacy
+  var vocV3 = (r.vocabulario_v3||'').trim();
+  if(vocV3) {
+    html += '<div class="ps"><div class="ps-title">🗣️ Vocabulario (IA)</div><div class="dtext">'+vocV3+'</div></div>';
+  } else if(vocab.length) {
+    html += '<div class="ps"><div class="ps-title">🗣️ Vocabulario</div><div class="chips">'+vocab.map(function(w){return '<span class="chip">'+w+'</span>';}).join('')+'</div></div>';
+  }
+  // Actividades: preferir V3 si existe
+  html += sec('🎯','Actividades', r.actividad_v3 || r.actividades);
+  // Comidas desglosadas V3
+  var tomas = [{k:'desayuno',l:'🌅 Desayuno'},{k:'almuerzo',l:'🥐 Almuerzo'},{k:'comida',l:'🍽️ Comida'},{k:'merienda',l:'🍎 Merienda'},{k:'cena',l:'🌙 Cena'}];
+  var tomasHTML = tomas.filter(function(t){return r[t.k];}).map(function(t){return '<div style="font-size:.8rem;margin-bottom:3px"><strong>'+t.l+':</strong> '+r[t.k]+'</div>';}).join('');
+  if(tomasHTML) {
+    html += '<div class="ps"><div class="ps-title">🍽️ Alimentación (IA)</div>'+tomasHTML+'</div>';
+  } else {
+    html += sec('🍽️','Comidas', r.comidas);
+  }
   html += sec('💊','Medicación', r.medicacion);
-  html += sec('📝','Notas', r.notas);
+  html += sec('📝','Notas', r.observaciones || r.notas);
   document.getElementById('det-body').innerHTML = html;
   document.getElementById('overlay').classList.add('open');
 }

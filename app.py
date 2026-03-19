@@ -424,15 +424,31 @@ def _process_upload(text):
 def get_reports():
     db = get_db(); cur = db.cursor()
     where, params = ['1=1'], []
-    for k, col in [('from','date >='),('to','date <='),('mediator','mediator ='),('turn','turn ='),('mood','mood =')]:
+    for k, col in [('from','r.date >='),('to','r.date <='),('mediator','r.mediator ='),('turn','r.turn ='),('mood','r.mood =')]:
         if request.args.get(k): where.append(f'{col} %s'); params.append(request.args[k])
-    if request.args.get('conducta') == '1': where.append('conducta > 0')
-    if request.args.get('conducta') == '0': where.append('conducta = 0')
-    cur.execute(f"""SELECT id,date,mediator,turn,mood,conducta,estiramientos,
-               agua,pis,estado,comunicacion,actividades,comidas,
-               medicacion,notas,vocab,formato,body_preview,banyo
-        FROM reports WHERE {' AND '.join(where)}
-        ORDER BY date DESC,id DESC""", params)
+    if request.args.get('conducta') == '1': where.append('r.conducta > 0')
+    if request.args.get('conducta') == '0': where.append('r.conducta = 0')
+    try:
+        cur.execute(f"""SELECT
+            r.id, r.date, r.mediator, r.turn, r.mood,
+            r.conducta, r.estiramientos,
+            r.agua, r.pis, r.estado, r.comunicacion, r.actividades, r.comidas,
+            r.medicacion, r.notas, r.vocab, r.formato, r.body_preview, r.banyo,
+            v.agua_ml, v.autoagresiones, v.agresiones_mediador,
+            v.agresiones_terceros, v.aleteos, v.sueno_horas,
+            v.desayuno, v.almuerzo, v.comida, v.merienda, v.cena,
+            v.actividad AS actividad_v3, v.vocabulario AS vocabulario_v3,
+            v.observaciones
+        FROM reports r
+        LEFT JOIN reports_v3 v ON v.source_id = r.id
+        WHERE {' AND '.join(where)}
+        ORDER BY r.date DESC, r.id DESC""", params)
+    except Exception:
+        cur.execute(f"""SELECT id,date,mediator,turn,mood,conducta,estiramientos,
+                   agua,pis,estado,comunicacion,actividades,comidas,
+                   medicacion,notas,vocab,formato,body_preview,banyo
+            FROM reports WHERE {' AND '.join(where)}
+            ORDER BY date DESC,id DESC""", params)
     result = []
     for r in cur.fetchall():
         d = dict(r)
@@ -440,6 +456,8 @@ def get_reports():
         if isinstance(d['vocab'], str):
             try: d['vocab'] = json.loads(d['vocab'])
             except: d['vocab'] = []
+        if d.get('agua_ml') is not None:
+            d['agua'] = d['agua_ml']
         result.append(d)
     return jsonify({'reports': result, 'total': len(result)})
 
