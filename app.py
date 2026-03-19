@@ -405,7 +405,7 @@ def _process_upload(text):
                         wcur = conn.cursor()
                         _upsert_v3(wcur, parsed, msg['id'], body)
                         conn.commit()
-                        time.sleep(0.6)
+                        time.sleep(0.3)
                     except Exception as e:
                         conn.rollback()
                         print(f"auto v3 parse error id={msg.get('id')}: {e}")
@@ -718,6 +718,12 @@ def admin_truncate():
     try:
         db = get_db(); cur = db.cursor()
         cur.execute('TRUNCATE TABLE reports RESTART IDENTITY CASCADE')
+        try:
+            cur.execute('TRUNCATE TABLE reports_v3 RESTART IDENTITY CASCADE')
+        except: pass
+        try:
+            cur.execute('TRUNCATE TABLE upload_log RESTART IDENTITY CASCADE')
+        except: pass
         db.commit()
         cur.close()
         return jsonify({'ok': True, 'msg': 'Tabla reports vaciada'})
@@ -1157,7 +1163,7 @@ def v3_reparse_all():
                     _reparse_status["errors"] += 1
                     _reparse_status["last_error"] = str(e)
                 _reparse_status["done"] = i + 1
-                time.sleep(0.6)
+                time.sleep(0.3)
         except Exception as e:
             _reparse_status["last_error"] = str(e)
         finally:

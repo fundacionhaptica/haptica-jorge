@@ -1319,7 +1319,7 @@ function truncateDB() {
     .then(function(r){return r.json();})
     .then(function(d){
       if(d.ok){
-        alert('✅ BD vaciada. Ahora usa "Actualizar datos" para subir el chat .txt completo.');
+        alert('✅ BD vaciada. Sube ahora el .txt completo con 📂 Actualizar datos.');
         loadAll();
       } else {
         alert('❌ '+(d.error||'Error desconocido'));
@@ -1910,7 +1910,7 @@ function adminAction(action) {
         msg.textContent = action==='normalize'
           ? '✅ Normalizados ' + (d.total_updated||0) + ' registros'
           : action==='truncate'
-          ? '✅ BD vaciada. Ahora sube el chat completo con Actualizar datos.'
+          ? '✅ BD vaciada (informes + parseos V3 + historial). Sube ahora el .txt completo con 📂 Actualizar datos.'
           : action==='fix-raul-agua'
           ? '✅ Agua Raúl corregida: ' + (d.updated||0) + ' registros actualizados'
           : '✅ BD recargada: ' + d.inserted + '/' + d.total + ' informes';
