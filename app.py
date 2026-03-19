@@ -280,7 +280,8 @@ def upload():
     text = request.files['file'].read().decode('utf-8', errors='replace')
     reports = parse_whatsapp(text)
     if not reports:
-        return jsonify({'error': 'No se encontraron informes'}), 400
+        return jsonify({'ok': True, 'total_in_file': 0, 'new_inserted': 0,
+                        'duplicates': 0, 'date_from': None, 'date_to': None})
 
     db = get_db(); cur = db.cursor()
     cur.execute("SELECT date::text, mediator, LEFT(body_preview,200) FROM reports")
@@ -303,24 +304,23 @@ def upload():
             ))
 
     inserted = 0
-    SQL = "INSERT INTO reports (date,mediator,turn,mood,conducta,estiramientos,agua,pis,banyo,estado,comunicacion,actividades,comidas,medicacion,notas,vocab,formato,body_preview) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id"
     new_ids = []
+    SQL = "INSERT INTO reports (date,mediator,turn,mood,conducta,estiramientos,agua,pis,banyo,estado,comunicacion,actividades,comidas,medicacion,notas,vocab,formato,body_preview) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id"
     if to_insert:
-        try:
-            for row in to_insert:
-                try:
-                    cur.execute("SAVEPOINT s1")
-                    cur.execute(SQL, row)
-                    new_ids.append(cur.fetchone()['id'])
-                    cur.execute("RELEASE SAVEPOINT s1")
-                    inserted += 1
-                except:
-                    cur.execute("ROLLBACK TO SAVEPOINT s1")
-                    cur.execute("RELEASE SAVEPOINT s1")
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            print("upload error:", str(e)[:200])
+        for row in to_insert:
+            try:
+                cur.execute("SAVEPOINT s1")
+                cur.execute(SQL, row)
+                result = cur.fetchone()
+                if result:
+                    new_ids.append(result['id'])
+                cur.execute("RELEASE SAVEPOINT s1")
+                inserted += 1
+            except Exception as e:
+                cur.execute("ROLLBACK TO SAVEPOINT s1")
+                cur.execute("RELEASE SAVEPOINT s1")
+                print("insert error:", str(e)[:100])
+        db.commit()
 
     dates = sorted(r['date'] for r in reports)
     try:
@@ -332,17 +332,17 @@ def upload():
     # ── Parseo V3 automático en background para los informes nuevos ──────────
     if new_ids and os.environ.get("GEMINI_API_KEY"):
         def _auto_parse_v3(ids):
-            import psycopg2
-            from psycopg2.extras import RealDictCursor
-            from parser_v3 import parse_message as v3_parse, get_client as v3_client, load_few_shot_examples
             try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
+                from parser_v3 import parse_message as v3_parse, get_client as v3_client, load_few_shot_examples
                 conn = psycopg2.connect(os.environ["DATABASE_URL"], cursor_factory=RealDictCursor)
                 cur2 = conn.cursor()
                 # Asegurar tabla existe
-                from migrate_v3 import migrate
-                try: migrate()
+                try:
+                    from migrate_v3 import migrate
+                    migrate()
                 except: pass
-                # Cargar few-shot desde correcciones validadas
                 few_shot = load_few_shot_examples(os.environ["DATABASE_URL"])
                 client = v3_client()
                 placeholders = ','.join(['%s'] * len(ids))
@@ -354,7 +354,6 @@ def upload():
                         parsed = v3_parse(body, client=client, few_shot_examples=few_shot)
                         parsed['_source_date'] = msg['date'].isoformat() if msg.get('date') else None
                         parsed['_source_mediator'] = msg.get('mediator')
-                        from app_v3_routes import _upsert_v3
                         wcur = conn.cursor()
                         _upsert_v3(wcur, parsed, msg['id'], body)
                         conn.commit()
@@ -363,14 +362,14 @@ def upload():
                         conn.rollback()
                         print(f"auto v3 parse error id={msg.get('id')}: {e}")
                 conn.close()
-                print(f"Auto V3 parse: {len(msgs)} informes procesados")
+                print(f"Auto V3: {len(msgs)} informes parseados")
             except Exception as e:
                 print(f"Auto V3 background error: {e}")
         threading.Thread(target=_auto_parse_v3, args=(new_ids,), daemon=True).start()
 
     return jsonify({'ok': True, 'total_in_file': len(reports), 'new_inserted': inserted,
                     'duplicates': duplicates, 'date_from': dates[0], 'date_to': dates[-1],
-                    'v3_parsing': inserted > 0 and bool(os.environ.get("GEMINI_API_KEY"))})
+                    'v3_parsing': len(new_ids) > 0 and bool(os.environ.get("GEMINI_API_KEY"))})
 
 @app.route('/api/reports')
 @require_auth
