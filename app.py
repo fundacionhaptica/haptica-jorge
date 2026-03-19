@@ -440,7 +440,7 @@ def get_reports():
             v.actividad AS actividad_v3, v.vocabulario AS vocabulario_v3,
             v.observaciones
         FROM reports r
-        LEFT JOIN reports_v3 v ON v.source_id = r.id
+        LEFT JOIN reports_v3 v ON (v.source_id = r.id OR (v.source_id IS NULL AND v.date = r.date AND v.mediator = r.mediator AND v.turn = r.turn))
         WHERE {' AND '.join(where)}
         ORDER BY r.date DESC, r.id DESC""", params)
     except Exception:
@@ -1059,6 +1059,7 @@ def _upsert_v3(cur, parsed: dict, source_id: int, body_preview: str):
             merienda = EXCLUDED.merienda, cena = EXCLUDED.cena,
             actividad = EXCLUDED.actividad, vocabulario = EXCLUDED.vocabulario,
             observaciones = EXCLUDED.observaciones,
+            source_id = COALESCE(EXCLUDED.source_id, reports_v3.source_id),
             parse_error = EXCLUDED.parse_error, updated_at = NOW()
     """, {
         **parsed,

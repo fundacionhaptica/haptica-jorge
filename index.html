@@ -1104,15 +1104,26 @@ function renderList() {
     return '<button class="ysb-btn'+(currentListYear===y?' active':'')+'" onclick="setListYear(\''+y+'\')">'+( y==='all'?'Todos':y)+'</button>';
   }).join('');
   var rows = filtered.map(function(r,i) {
-    var vc = Array.isArray(r.vocab)?r.vocab:(typeof r.vocab==='string'?JSON.parse(r.vocab||'[]'):[]);
+    var hasV3 = r.autoagresiones != null;
+    var condTotal = hasV3 ? ((r.autoagresiones||0)+(r.agresiones_mediador||0)+(r.agresiones_terceros||0)+(r.aleteos||0)) : (r.conducta||0);
+    var condCell = condTotal > 0
+      ? '<span class="badge b-ne">⚠️ '+condTotal+'</span>'
+      : '<span class="badge b-p">✓</span>';
+    var aguaVal = r.agua_ml != null ? r.agua_ml : r.agua;
+    var estadoCell = hasV3 && r.estado
+      ? '<span style="font-size:.75rem;color:#374151">'+r.estado.slice(0,28)+(r.estado.length>28?'…':'')+'</span>'
+      : '<span class="badge '+(MOOD_CLASS[r.mood]||'b-q')+'">'+(MOOD_LABEL[r.mood]||'?')+'</span>';
+    var vocText = r.vocabulario_v3 ? r.vocabulario_v3.slice(0,40)
+      : (function(){var vc=Array.isArray(r.vocab)?r.vocab:(typeof r.vocab==='string'?JSON.parse(r.vocab||'[]'):[]);return vc.slice(0,3).join(', ');})();
+    var v3badge = hasV3 ? '<span style="font-size:.6rem;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;border-radius:3px;padding:1px 4px;margin-left:3px">IA</span>' : '';
     return '<tr onclick="openDetail('+i+')" style="cursor:pointer">' +
       '<td>'+r.date+'</td>' +
-      '<td><span class="badge '+( MOOD_CLASS[r.mood]||'b-q')+'">'+( MOOD_LABEL[r.mood]||'?')+'</span></td>' +
-      '<td style="font-size:.82rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.mediator+'</td>' +
-      '<td style="font-size:.8rem">'+( TURN_LABEL[r.turn]||r.turn||'—')+'</td>' +
-      '<td style="text-align:center">'+(r.agua?r.agua+'ml':'—')+'</td>' +
-      '<td style="text-align:center"><span class="badge '+(r.conducta>0?'b-ne':'b-p')+'">'+(r.conducta>0?r.conducta+' pico'+(r.conducta>1?'s':''):'✓')+'</span></td>' +
-      '<td style="font-size:.72rem;color:var(--gray);max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+vc.slice(0,3).join(', ')+'</td>' +
+      '<td>'+estadoCell+'</td>' +
+      '<td style="font-size:.82rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.mediator+v3badge+'</td>' +
+      '<td style="font-size:.8rem">'+(TURN_LABEL[r.turn]||r.turn||'—')+'</td>' +
+      '<td style="text-align:center">'+(aguaVal?aguaVal+'ml':'—')+'</td>' +
+      '<td style="text-align:center">'+condCell+'</td>' +
+      '<td style="font-size:.72rem;color:var(--gray);max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+vocText+'</td>' +
       '</tr>';
   }).join('');
   el.innerHTML = '<div class="ysb" style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.8rem;align-items:center">' +
