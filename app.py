@@ -5,12 +5,23 @@ from flask import Flask, request, jsonify, send_from_directory, g, send_file
 from flask_cors import CORS
 from dotenv import load_dotenv
 import threading
+import time
 
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
 except ImportError:
     psycopg2 = None
+
+try:
+    from parser_v3 import parse_message as v3_parse_message
+    from parser_v3 import parse_batch as v3_parse_batch
+    from parser_v3 import get_client as v3_get_client
+    from parser_v3 import load_few_shot_examples as v3_few_shot
+    V3_AVAILABLE = True
+except Exception as e:
+    V3_AVAILABLE = False
+    print(f"parser_v3 no disponible: {e}")
 
 from parser import parse_whatsapp
 
@@ -330,28 +341,26 @@ def upload():
     except: pass
 
     # ── Parseo V3 automático en background para los informes nuevos ──────────
-    if new_ids and os.environ.get("GEMINI_API_KEY"):
+    if new_ids and os.environ.get("GEMINI_API_KEY") and V3_AVAILABLE:
         def _auto_parse_v3(ids):
             try:
                 import psycopg2
                 from psycopg2.extras import RealDictCursor
-                from parser_v3 import parse_message as v3_parse, get_client as v3_client, load_few_shot_examples
                 conn = psycopg2.connect(os.environ["DATABASE_URL"], cursor_factory=RealDictCursor)
                 cur2 = conn.cursor()
-                # Asegurar tabla existe
                 try:
                     from migrate_v3 import migrate
                     migrate()
                 except: pass
-                few_shot = load_few_shot_examples(os.environ["DATABASE_URL"])
-                client = v3_client()
+                few_shot = v3_few_shot(os.environ["DATABASE_URL"])
+                client = v3_get_client()
                 placeholders = ','.join(['%s'] * len(ids))
                 cur2.execute(f"SELECT id, date, mediator, turn, body_preview FROM reports WHERE id IN ({placeholders})", ids)
                 msgs = [dict(r) for r in cur2.fetchall()]
                 for msg in msgs:
                     try:
                         body = msg.get('body_preview') or ''
-                        parsed = v3_parse(body, client=client, few_shot_examples=few_shot)
+                        parsed = v3_parse_message(body, client=client, few_shot_examples=few_shot)
                         parsed['_source_date'] = msg['date'].isoformat() if msg.get('date') else None
                         parsed['_source_mediator'] = msg.get('mediator')
                         wcur = conn.cursor()
@@ -941,9 +950,6 @@ def delete_pai(pai_id):
     return jsonify({'ok': True})
 
 # ── V3 ROUTES ─────────────────────────────────────────────────────────────────
-from parser_v3 import parse_message as v3_parse_message
-from parser_v3 import parse_batch as v3_parse_batch
-from parser_v3 import get_client as v3_get_client
 
 _reparse_status = {
     "running": False,
