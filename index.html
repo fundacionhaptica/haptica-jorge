@@ -973,20 +973,57 @@ function renderMoodChart(monthly) {
     if(closest) showHitoInfo(closest, e.clientX, e.clientY);
     else if(hitoPanel) { hitoPanel.remove(); hitoPanel=null; }
   };
-  // Scroll horizontal — ancho proporcional al nº de meses
+  // ── Scroll horizontal — 18 meses visibles por defecto ─────────────────────
   var moodWrapper = document.getElementById('ch-mood').parentElement;
-  moodWrapper.style.overflowX='auto'; moodWrapper.style.cursor='grab';
-  var minW = Math.max(600, labels.length * 18);
-  document.getElementById('ch-mood').style.width = minW+'px';
-  document.getElementById('ch-mood').style.minWidth = minW+'px';
+  var moodCanvas  = document.getElementById('ch-mood');
+
+  // Ancho: cada mes ocupa 22px → canvas total proporcional al historial
+  var PX_PER_MONTH = 22;
+  var VISIBLE_MONTHS = 18;
+  var totalW = Math.max(600, labels.length * PX_PER_MONTH);
+
+  // El wrapper muestra exactamente VISIBLE_MONTHS meses
+  var visibleW = VISIBLE_MONTHS * PX_PER_MONTH;
+  moodWrapper.style.width = '100%';
+  moodWrapper.style.maxWidth = '100%';
+  moodWrapper.style.overflowX = 'auto';
+  moodWrapper.style.overflowY = 'hidden'; // sin zoom vertical
+  moodWrapper.style.cursor = 'grab';
+  moodWrapper.style.userSelect = 'none';
+  moodWrapper.style.WebkitUserSelect = 'none';
+
+  // Evitar scroll vertical accidental en el wrapper
+  moodWrapper.addEventListener('wheel', function(e){
+    if(Math.abs(e.deltaX) > Math.abs(e.deltaY)) return; // scroll horizontal nativo: ok
+    e.preventDefault();
+    moodWrapper.scrollLeft += e.deltaY;
+  }, {passive:false});
+
+  moodCanvas.style.width    = totalW + 'px';
+  moodCanvas.style.minWidth = totalW + 'px';
+  moodCanvas.style.height   = '180px'; // altura fija — sin resize vertical
+
+  // Drag para desplazar horizontalmente
   (function(){
-    var isDown=false,startX,scrollLeft;
-    moodWrapper.addEventListener('mousedown',function(e){isDown=true;startX=e.pageX-moodWrapper.offsetLeft;scrollLeft=moodWrapper.scrollLeft;moodWrapper.style.cursor='grabbing';});
-    moodWrapper.addEventListener('mouseleave',function(){isDown=false;moodWrapper.style.cursor='grab';});
-    moodWrapper.addEventListener('mouseup',function(){isDown=false;moodWrapper.style.cursor='grab';});
-    moodWrapper.addEventListener('mousemove',function(e){if(!isDown)return;e.preventDefault();moodWrapper.scrollLeft=scrollLeft-(e.pageX-moodWrapper.offsetLeft-startX)*1.2;});
+    var isDown=false, startX, scrollLeft;
+    moodWrapper.addEventListener('mousedown', function(e){
+      isDown=true; startX=e.pageX-moodWrapper.offsetLeft;
+      scrollLeft=moodWrapper.scrollLeft; moodWrapper.style.cursor='grabbing';
+    });
+    moodWrapper.addEventListener('mouseleave', function(){ isDown=false; moodWrapper.style.cursor='grab'; });
+    moodWrapper.addEventListener('mouseup',    function(){ isDown=false; moodWrapper.style.cursor='grab'; });
+    moodWrapper.addEventListener('mousemove',  function(e){
+      if(!isDown) return; e.preventDefault();
+      moodWrapper.scrollLeft = scrollLeft - (e.pageX - moodWrapper.offsetLeft - startX) * 1.2;
+    });
+    // Touch para móvil
+    var touchStartX=0, touchScrollLeft=0;
+    moodWrapper.addEventListener('touchstart',  function(e){ touchStartX=e.touches[0].clientX; touchScrollLeft=moodWrapper.scrollLeft; }, {passive:true});
+    moodWrapper.addEventListener('touchmove',   function(e){ moodWrapper.scrollLeft=touchScrollLeft-(e.touches[0].clientX-touchStartX); }, {passive:true});
   })();
-  setTimeout(function(){moodWrapper.scrollLeft=moodWrapper.scrollWidth;},100);
+
+  // Scroll inicial: mostrar los últimos 18 meses
+  setTimeout(function(){ moodWrapper.scrollLeft = moodWrapper.scrollWidth; }, 120);
 
   charts['mood'] = new Chart(document.getElementById('ch-mood').getContext('2d'),{
     type:'line', plugins:[eventPlugin],
