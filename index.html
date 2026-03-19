@@ -207,9 +207,122 @@ tbody td{padding:6px 10px;vertical-align:middle}
 .log-dup{color:var(--gray)}
 
 .hidden{display:none!important}
-@media(max-width:900px){.sidebar{display:none}.charts-grid{grid-column:1/-1;grid-template-columns:1fr}}
-@media(max-width:600px){.main{padding:.8rem}.kpi-grid{grid-template-columns:1fr 1fr}}
-::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* ── RESPONSIVE MÓVIL ────────────────────────────────────────────────────── */
+@media(max-width:900px){
+  .sidebar{display:none}
+  .charts-grid{grid-column:1/-1;grid-template-columns:1fr}
+}
+
+@media(max-width:600px){
+  /* Header: compacto, botones en fila con scroll horizontal */
+  .hdr{padding:0 .75rem;height:52px}
+  .hdr-title{font-size:.88rem}
+  .hdr-sub{display:none}
+  .hdr-stats{display:none}
+  .hdr-right{gap:.35rem;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;flex-shrink:1;min-width:0}
+  .hdr-right::-webkit-scrollbar{display:none}
+  .btn-hdr{padding:4px 8px;font-size:.7rem;white-space:nowrap;flex-shrink:0}
+
+  /* Layout */
+  .main{padding:.6rem .75rem}
+  .layout{min-height:calc(100vh - 52px)}
+
+  /* Tabs: scroll horizontal sin wrap */
+  .tabs{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;flex-wrap:nowrap;padding:3px;border-radius:8px}
+  .tabs::-webkit-scrollbar{display:none}
+  .tb{padding:6px 10px;font-size:.75rem;white-space:nowrap;flex-shrink:0}
+
+  /* KPIs: 2 columnas en móvil */
+  .kpi-grid{grid-template-columns:1fr 1fr;gap:.5rem}
+  .kpi{padding:.7rem .6rem}
+  .kpi-val{font-size:1.4rem}
+  .kpi-label{font-size:.65rem}
+
+  /* Gráficos: altura reducida */
+  .cw{height:160px!important}
+  .cw.tall{height:200px!important}
+  .cw.xtall{height:240px!important}
+  .cc{padding:.75rem}
+  .cc-title{font-size:.8rem}
+  .charts-grid{gap:.6rem}
+
+  /* Modales: pantalla completa */
+  .modal-overlay{padding:.5rem}
+  .modal{max-height:95vh;border-radius:12px}
+  .modal-hdr{padding:.8rem 1rem}
+  .modal-hdr h3{font-size:.9rem}
+  .modal-body{padding:.9rem}
+
+  /* Tabla informes: scroll horizontal */
+  .rep-table{font-size:.75rem}
+  div[style*="overflow-x:auto"] table{min-width:480px}
+
+  /* Panel lateral del informe */
+  .panel{max-width:100%;border-radius:12px 12px 0 0;max-height:92vh;
+    position:fixed;bottom:0;left:0;right:0;animation:slideUp .2s ease}
+  @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+
+  /* Tabla mediadores: ocultar columna período en móvil */
+  .med-period-col{display:none}
+
+  /* Login */
+  .login-card{padding:2rem 1.5rem}
+
+  /* Modal entrenamiento IA: tabs internos en scroll */
+  #training-modal .modal{max-width:100%;max-height:96vh}
+  #training-modal > div > div:nth-child(2){overflow-x:auto;flex-wrap:nowrap}
+  .tr-tab{white-space:nowrap;flex-shrink:0}
+
+  /* Grid 2 col → 1 col en correcciones */
+  #tr-correction-panel > div > div[style*="grid-template-columns:1fr 1fr"]{
+    grid-template-columns:1fr!important
+  }
+  #tr-fields{grid-template-columns:1fr 1fr!important}
+
+  /* Informe mensual: grid 3 col → 1 col */
+  #monthly-report-content > div[style*="grid-template-columns:repeat(3"]{
+    grid-template-columns:1fr 1fr!important
+  }
+
+  /* Docs médicos: columna única */
+  #trpanel-medicos > div[style*="grid-template-columns"]{
+    grid-template-columns:1fr!important
+  }
+
+  /* V3 conducta: tabla scroll */
+  #v3-tab-content .cc{padding:.6rem}
+  #v3-tab-content table{font-size:.75rem}
+
+  /* Alimentación: ocultar columna mediador en móvil */
+  #v3-tab-content table td:nth-child(2),
+  #v3-tab-content table th:nth-child(2){display:none}
+
+  /* Correlaciones: grid 1 col */
+  #corr-tab-content > div[style*="grid-template-columns:1fr 1fr"]{
+    display:flex!important;flex-direction:column!important
+  }
+
+  /* Año selector historial */
+  .year-tabs{gap:2px}
+  .yt{padding:4px 8px;font-size:.74rem}
+
+  /* Barra de progreso upload */
+  .prog-wrap{margin-top:.6rem}
+  .upload-result{margin-top:.6rem;padding:.6rem .8rem}
+  .ur-line{font-size:.78rem}
+}
+
+@media(max-width:380px){
+  .kpi-val{font-size:1.2rem}
+  .btn-hdr{padding:3px 6px;font-size:.66rem}
+  .tb{padding:5px 8px;font-size:.7rem}
+}
+
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 
 </style>
 </head>
@@ -760,7 +873,7 @@ function renderMediatorSummary() {
       return '<tr style="border-bottom:1px solid #f1f5f9">'+
         '<td style="padding:8px 10px;font-weight:600;font-size:.83rem;color:#1e293b">'+m.mediator+'</td>'+
         '<td style="padding:8px 10px;text-align:center;font-size:.78rem;color:#64748b">'+m.total+'</td>'+
-        '<td style="padding:8px 10px;font-size:.78rem;color:#64748b">'+desde+' – '+hasta+'</td>'+
+        '<td style="padding:8px 10px;font-size:.78rem;color:#64748b" class="med-period-col">'+desde+' – '+hasta+'</td>'+
         '<td style="padding:8px 10px">'+estadoLabel(m.avg_estado)+'</td>'+
         '</tr>';
     }).join('');
@@ -770,7 +883,7 @@ function renderMediatorSummary() {
         '<thead><tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb">'+
           '<th style="text-align:left;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600">Mediador/a</th>'+
           '<th style="text-align:center;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600">Informes</th>'+
-          '<th style="text-align:left;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600">Período</th>'+
+          '<th style="text-align:left;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600" class="med-period-col">Período</th>'+
           '<th style="text-align:left;padding:8px 10px;font-size:.75rem;color:#64748b;font-weight:600" title="Score ponderado: ánimo 45% + conducta 35% + medicación 20%">Estado (0-5)</th>'+
         '</tr></thead>'+
         '<tbody>'+rows+'</tbody>'+
