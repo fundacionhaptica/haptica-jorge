@@ -283,12 +283,31 @@ def ping():
     except:
         return jsonify({'status': 'ok', 'total_reports': 0})
 
+@app.route('/api/upload-text', methods=['POST'])
+@require_auth
+def upload_text():
+    """Igual que /api/upload pero acepta JSON {text: '...'} en lugar de multipart.
+    Más fiable en móvil y con archivos grandes."""
+    data = request.get_json(silent=True) or {}
+    text = data.get('text', '')
+    if not text:
+        return jsonify({'error': 'No se recibió texto'}), 400
+    # Reusar la misma lógica de upload
+    request.files_text = text
+    return _process_upload(text)
+
+
 @app.route('/api/upload', methods=['POST'])
 @require_auth
 def upload():
     if 'file' not in request.files:
         return jsonify({'error': 'No se recibio archivo'}), 400
     text = request.files['file'].read().decode('utf-8', errors='replace')
+    return _process_upload(text)
+
+
+def _process_upload(text):
+    """Lógica compartida de upload entre /api/upload y /api/upload-text."""
     reports = parse_whatsapp(text)
     if not reports:
         return jsonify({'ok': True, 'total_in_file': 0, 'new_inserted': 0,

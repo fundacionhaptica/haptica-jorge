@@ -1072,15 +1072,25 @@ function handleUpload(file) {
   document.getElementById('upload-result').classList.remove('error');
   document.getElementById('btn-reload').style.display='none';
   document.getElementById('prog-wrap').style.display='block';
-  setProgress(20,'Subiendo archivo...');
-  var formData = new FormData();
-  formData.append('file', file);
-  setProgress(50,'Procesando...');
-  fetch(API_URL+'/api/upload', {method:'POST',headers:{'X-Password':API_PWD},body:formData})
+  setProgress(10,'Leyendo archivo...');
+
+  // Leer el archivo localmente primero, luego enviar como JSON
+  // Esto evita el "Load failed" en móvil con archivos grandes via multipart
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var text = e.target.result;
+    setProgress(40,'Subiendo...');
+    fetch(API_URL+'/api/upload-text', {
+      method:'POST',
+      headers:{'X-Password':API_PWD,'Content-Type':'application/json'},
+      body:JSON.stringify({text:text})
+    })
     .then(function(r){ return r.text().then(function(txt){return {status:r.status,txt:txt};}); })
     .then(function(res){
       var d;
-      try { d = JSON.parse(res.txt); } catch(e) { throw new Error('Respuesta inesperada ('+res.status+'): '+res.txt.slice(0,100)); }
+      try { d = JSON.parse(res.txt); } catch(e) {
+        throw new Error('Error del servidor ('+res.status+'): '+res.txt.slice(0,120));
+      }
       if(res.status!==200 && !d.ok) throw new Error(d.error||'Error HTTP '+res.status);
       setProgress(100,'Listo');
       var el=document.getElementById('upload-result');
@@ -1090,11 +1100,11 @@ function handleUpload(file) {
         document.getElementById('ur2').innerHTML='✅ Nuevos insertados: <b>'+d.new_inserted+'</b>';
         document.getElementById('ur3').innerHTML='♻️ Duplicados ignorados: <b>'+d.duplicates+'</b>';
         document.getElementById('ur4').innerHTML='📅 Rango: <b>'+(d.date_from||'—')+' → '+(d.date_to||'—')+'</b>';
-        if(d.v3_parsing) document.getElementById('ur4').innerHTML+='<br><span style="color:#7c3aed;font-size:.75rem">🤖 Parseo IA en progreso en segundo plano...</span>';
+        if(d.v3_parsing) document.getElementById('ur4').innerHTML+='<br><span style="color:#7c3aed;font-size:.75rem">🤖 Parseo IA en progreso...</span>';
         if(d.new_inserted>0) document.getElementById('btn-reload').style.display='block';
         if(d.total_in_file===0){
           el.classList.add('error');
-          document.getElementById('ur1').innerHTML='⚠️ No se encontraron informes. Comprueba que el archivo es un export de WhatsApp con formato [DD/MM/YYYY, HH:MM:SS] y mensajes de más de 80 caracteres.';
+          document.getElementById('ur1').innerHTML='⚠️ No se encontraron informes. Comprueba que el archivo es un export de WhatsApp con formato [DD/MM/YYYY, HH:MM:SS].';
         }
       } else {
         el.classList.add('error');
@@ -1108,6 +1118,14 @@ function handleUpload(file) {
       document.getElementById('ur1').innerHTML='❌ '+e.message;
       ['ur2','ur3','ur4'].forEach(function(id){document.getElementById(id).innerHTML='';});
     });
+  };
+  reader.onerror = function(){
+    setProgress(0,'');
+    var el=document.getElementById('upload-result');
+    el.style.display='block'; el.classList.add('error');
+    document.getElementById('ur1').innerHTML='❌ Error leyendo el archivo. Intenta de nuevo.';
+  };
+  reader.readAsText(file, 'utf-8');
 }
 
 function reloadData() {
