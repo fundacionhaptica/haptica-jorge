@@ -1,13 +1,15 @@
 """
 Parser de WhatsApp para informes de Jorge.
 Acepta formato [D/M/YY, HH:MM:SS] y [DD/MM/YYYY, HH:MM:SS]
+Identificador único: msg_ts (fecha+hora exacta del mensaje WhatsApp)
 """
 import re
 from datetime import datetime
 
 # ── REGEX UNIVERSAL ────────────────────────────────────────────────────────────
+# Captura también la hora completa para usar como identificador único
 MSG_RE = re.compile(
-    r'\[(\d{1,2})\/(\d{1,2})\/(\d{2,4}),\s*\d{1,2}:\d{2}(?::\d{2})?\]\s*([^:]+):\s*([\s\S]*?)(?=\[\d{1,2}\/\d{1,2}\/\d{2,4},|$)'
+    r'\[(\d{1,2})\/(\d{1,2})\/(\d{2,4}),\s*(\d{1,2}:\d{2}(?::\d{2})?)\]\s*([^:]+):\s*([\s\S]*?)(?=\[\d{1,2}\/\d{1,2}\/\d{2,4},|$)'
 )
 
 MEDIATORS = {
@@ -15,7 +17,88 @@ MEDIATORS = {
     'elena','sophie','javier','luna','alba','karol','amalia','dulce','paula',
     'raúl','raul','ari','jeach','belen','belén','gregorioalexander','gregory',
     'eli','angela','ángela','mediadora','mediador','juanjo','nerea','sara',
-    'marta','andres','andrés','pablo','jorge mediador','mapi'
+    'marta','andres','andrés','pablo','jorge mediador','mapi','veronica',
+    'verónica','jonathan','sofy','sofía','sofia','leyre','susana','greg'
+}
+
+# ── NORMALIZACIÓN DE NOMBRES ───────────────────────────────────────────────────
+# Mapea cualquier variante al nombre canónico
+MEDIATOR_NORM = {
+    # Raquel
+    'raquel': 'Raquel',
+    # Eva
+    'eva miguel': 'Eva Miguel', 'eva': 'Eva Miguel',
+    # Mapi
+    'mapi martinez': 'Mapi Martinez', 'mapi': 'Mapi Martinez',
+    # Raúl
+    'raúl blasco': 'Raul Blasco', 'raul blasco': 'Raul Blasco',
+    'raúl': 'Raul Blasco', 'raul': 'Raul Blasco',
+    # Ainhoa
+    'ainhoa': 'Ainhoa',
+    # Belén
+    'belen auqui': 'Belen Auqui', 'belén auqui': 'Belen Auqui',
+    'belen': 'Belen Auqui', 'belén': 'Belen Auqui',
+    # Karol
+    'karol': 'Karol',
+    # Gregory / Greg
+    'gregory': 'Gregory', 'greg': 'Gregory', 'gregorioalexander': 'Gregory',
+    'greg mediador': 'Gregory',
+    # Eli
+    'eli': 'Eli', 'mediador eli': 'Eli',
+    # Irene
+    'irene': 'Irene',
+    # Sophie
+    'sophie': 'Sophie',
+    # Elena
+    'elena': 'Elena',
+    # Javier
+    'javier': 'Javier',
+    # Luna
+    'luna': 'Luna',
+    # Alba
+    'alba': 'Alba',
+    # Amalia
+    'amalia': 'Amalia',
+    # Dulce
+    'dulce': 'Dulce',
+    # Paula
+    'paula': 'Paula',
+    # Ari
+    'ari': 'Ari',
+    # Adri
+    'adri': 'Adri',
+    # Blanca
+    'blanca': 'Blanca',
+    # Delia
+    'delia': 'Delia',
+    # Laura
+    'laura': 'Laura',
+    # Carlos
+    'carlos': 'Carlos',
+    # Rebeca
+    'rebeca': 'Rebeca',
+    # Leyre
+    'leyre': 'Leyre',
+    # Verónica
+    'veronica': 'Veronica', 'verónica': 'Veronica',
+    # Jonathan
+    'jonathan': 'Jonathan',
+    # Susana
+    'susana': 'Susana',
+    # María (mediadora)
+    'maria mediadora': 'Maria (mediadora)',
+    # Sofía
+    'sofy': 'Sofia', 'sofía': 'Sofia', 'sofia': 'Sofia',
+    # Nerea
+    'nerea': 'Nerea',
+    # Sara
+    'sara': 'Sara',
+    # Marta
+    'marta': 'Marta',
+    # Andrés
+    'andres': 'Andres', 'andrés': 'Andres',
+    # Pablo
+    'pablo': 'Pablo',
 }
 
 MOOD_MAP = {
@@ -29,6 +112,19 @@ MOOD_MAP = {
 def is_mediator(name: str) -> bool:
     n = name.lower().strip().lstrip('~').strip()
     return any(m in n for m in MEDIATORS)
+
+def normalize_mediator(name: str) -> str:
+    """Normaliza el nombre del mediador a su forma canónica."""
+    n = name.lower().strip().lstrip('~').strip()
+    # Buscar coincidencia exacta primero
+    if n in MEDIATOR_NORM:
+        return MEDIATOR_NORM[n]
+    # Buscar si alguna clave está contenida en el nombre
+    for key, canonical in sorted(MEDIATOR_NORM.items(), key=lambda x: -len(x[0])):
+        if key in n:
+            return canonical
+    # Si no hay coincidencia, devolver limpio con capitalización
+    return name.strip().lstrip('~').strip().title()
 
 def normalize_year(y: str) -> str:
     return ('20' + y) if len(y) == 2 else y
@@ -56,7 +152,6 @@ def extract_mood(body: str) -> str:
             for k, v in MOOD_MAP.items():
                 if k in val:
                     return v
-            # Fallback numérico
             nm = re.search(r'(\d+)', val)
             if nm:
                 n = int(nm.group(1))
@@ -64,7 +159,6 @@ def extract_mood(body: str) -> str:
                 if n >= 6: return 'positivo'
                 if n >= 4: return 'neutro'
                 return 'negativo'
-    # Heurística v1
     bl = body.lower()
     if any(w in bl for w in ['muy positivo','muy contento','excelente','genial','fantástico']): return 'muy_positivo'
     if any(w in bl for w in ['positivo','contento','bien','alegre','tranquilo']): return 'positivo'
@@ -107,7 +201,6 @@ def extract_agua(body: str) -> int | None:
     if m: return int(m.group(1))
     m = re.search(r'#\s*AGUA[:\s]*\*?\s*(\d+)', body, re.I)
     if m: return int(m.group(1))
-    # Patrones en litros: "1l", "1 l", "1litro", "1 litro", "1.5 litros"
     m = re.search(r'agua[:\s]*(\d+(?:[.,]\d+)?)\s*l(?:itros?)?\b', body, re.I)
     if m: return round(float(m.group(1).replace(',','.')) * 1000)
     m = re.search(r'(\d+(?:[.,]\d+)?)\s*l(?:itros?)?\s*(?:de\s*)?agua', body, re.I)
@@ -146,30 +239,31 @@ def detect_format(body: str) -> str:
     has_hashtag_estado = bool(re.search(r'#\s*ESTADO', body, re.I))
     return 'v2' if (has_hash and has_hashtag_estado) else 'v1'
 
-def parse_report(date_str: str, sender: str, body: str) -> dict:
+def parse_report(date_str: str, msg_ts: str, sender: str, body: str) -> dict:
     """Convierte un mensaje en un dict estructurado."""
     fmt = detect_format(body)
     turn = extract_turn(body, sender)
     return {
-        'date':       date_str,           # YYYY-MM-DD
-        'mediator':   sender.strip(),
-        'turn':       turn,
-        'mood':       extract_mood(body),
-        'conducta':   extract_conducta(body),
+        'date':        date_str,
+        'msg_ts':      msg_ts,       # timestamp exacto del mensaje — ID único
+        'mediator':    normalize_mediator(sender),
+        'turn':        turn,
+        'mood':        extract_mood(body),
+        'conducta':    extract_conducta(body),
         'estiramientos': extract_int(body,
             r'#\s*ESTIRAMIENTOS[^:\n]*\*?\s*Nr\.?\s*Veces[:\s]*(\d+)',
             r'estiramientos[:\s]*(\d+)') or 0,
-        'agua':       extract_agua(body),
-        'pis':        extract_pis(body),
-        'banyo':      extract_section(body, 'BA[ÑN]O'),
-        'estado':     extract_section(body, 'ESTADO', 'OBSERVACIONES'),
+        'agua':        extract_agua(body),
+        'pis':         extract_pis(body),
+        'banyo':       extract_section(body, 'BA[ÑN]O'),
+        'estado':      extract_section(body, 'ESTADO', 'OBSERVACIONES'),
         'comunicacion': extract_section(body, 'COMUNICACI[OÓ]N'),
         'actividades': extract_section(body, 'ACTIVIDADES', 'ACTIVIDAD'),
-        'comidas':    extract_section(body, 'COMIDAS?', 'ALIMENTACI[OÓ]N'),
-        'medicacion': extract_meds(body),
-        'notas':      extract_section(body, 'NOTAS?', 'OBSERVACIONES'),
-        'vocab':      extract_vocab(body),
-        'formato':    fmt,
+        'comidas':     extract_section(body, 'COMIDAS?', 'ALIMENTACI[OÓ]N'),
+        'medicacion':  extract_meds(body),
+        'notas':       extract_section(body, 'NOTAS?', 'OBSERVACIONES'),
+        'vocab':       extract_vocab(body),
+        'formato':     fmt,
         'body_preview': body[:300],
     }
 
@@ -178,8 +272,9 @@ def parse_whatsapp(text: str) -> list[dict]:
     reports = []
     for m in MSG_RE.finditer(text):
         dd, mm, yy = m.group(1), m.group(2), m.group(3)
-        sender = m.group(4).lstrip('\u200e').replace('~', '').strip()
-        body = m.group(5).strip()
+        hora    = m.group(4)
+        sender  = m.group(5).lstrip('\u200e').replace('~', '').strip()
+        body    = m.group(6).strip()
 
         if not is_mediator(sender): continue
         if len(body) < 80: continue
@@ -187,12 +282,13 @@ def parse_whatsapp(text: str) -> list[dict]:
 
         yyyy = normalize_year(yy)
         date_str = f"{yyyy}-{mm.zfill(2)}-{dd.zfill(2)}"
+        msg_ts   = f"{date_str} {hora}"   # ej: "2025-11-24 21:14:57"
 
         try:
             datetime.strptime(date_str, '%Y-%m-%d')
         except ValueError:
             continue
 
-        reports.append(parse_report(date_str, sender, body))
+        reports.append(parse_report(date_str, msg_ts, sender, body))
 
     return reports

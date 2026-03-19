@@ -42,6 +42,7 @@ def init_db():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS reports (
                 id SERIAL PRIMARY KEY, date DATE NOT NULL,
+                msg_ts TEXT UNIQUE,
                 mediator TEXT NOT NULL, turn TEXT DEFAULT 'sin especificar',
                 mood TEXT DEFAULT '?', conducta INTEGER DEFAULT 0,
                 estiramientos INTEGER DEFAULT 0, agua INTEGER, pis INTEGER,
@@ -50,8 +51,7 @@ def init_db():
                 comidas TEXT DEFAULT '', medicacion TEXT DEFAULT '',
                 notas TEXT DEFAULT '', vocab JSONB DEFAULT '[]',
                 formato TEXT DEFAULT 'v1', body_preview TEXT DEFAULT '',
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                UNIQUE(date, mediator, turn)
+                created_at TIMESTAMPTZ DEFAULT NOW()
             );
             CREATE TABLE IF NOT EXISTS upload_log (
                 id SERIAL PRIMARY KEY, uploaded_at TIMESTAMPTZ DEFAULT NOW(),
@@ -60,6 +60,7 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_reports_date ON reports(date);
             CREATE INDEX IF NOT EXISTS idx_reports_mediator ON reports(mediator);
+            CREATE INDEX IF NOT EXISTS idx_reports_msg_ts ON reports(msg_ts);
         """)
         db.commit(); cur.close(); db.close()
         print("DB lista")
@@ -90,13 +91,13 @@ def auto_seed():
         for r in data:
             try:
                 cur.execute("""INSERT INTO reports
-                    (date,mediator,turn,seq,mood,conducta,estiramientos,agua,pis,
+                    (date,msg_ts,mediator,turn,mood,conducta,estiramientos,agua,pis,
                      banyo,estado,comunicacion,actividades,comidas,medicacion,
                      notas,vocab,formato,body_preview)
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (date,mediator,turn,seq) DO NOTHING""",
-                    (r.get('date'),r.get('mediator'),r.get('turn','sin especificar'),
-                     r.get('seq',1),
+                    ON CONFLICT (msg_ts) DO NOTHING""",
+                    (r.get('date'),r.get('msg_ts'),
+                     r.get('mediator'),r.get('turn','sin especificar'),
                      r.get('mood','?'),r.get('conducta',0),r.get('estiramientos',0),
                      r.get('agua'),r.get('pis'),r.get('banyo',''),r.get('estado',''),
                      r.get('comunicacion',''),r.get('actividades',''),r.get('comidas',''),
@@ -160,13 +161,14 @@ def upload():
     for r in reports:
         try:
             cur.execute("""INSERT INTO reports
-                (date,mediator,turn,seq,mood,conducta,estiramientos,agua,pis,
+                (date,msg_ts,mediator,turn,mood,conducta,estiramientos,agua,pis,
                  banyo,estado,comunicacion,actividades,comidas,medicacion,
                  notas,vocab,formato,body_preview)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (date,mediator,turn,seq) DO NOTHING""",
-                (r['date'],r['mediator'],r['turn'],r.get('seq',1),r['mood'],r['conducta'],
-                 r['estiramientos'],r['agua'],r['pis'],r['banyo'],r['estado'],
+                ON CONFLICT (msg_ts) DO NOTHING""",
+                (r['date'],r.get('msg_ts'),r['mediator'],r['turn'],
+                 r['mood'],r['conducta'],r['estiramientos'],
+                 r['agua'],r['pis'],r['banyo'],r['estado'],
                  r['comunicacion'],r['actividades'],r['comidas'],r['medicacion'],
                  r['notas'],json.dumps(r['vocab'],ensure_ascii=False),
                  r['formato'],r['body_preview']))
@@ -271,6 +273,83 @@ def get_upload_log():
             if d.get(k): d[k] = d[k].isoformat()
         rows.append(d)
     return jsonify({'logs': rows})
+
+@app.route('/api/admin/migrate', methods=['GET','POST'])
+def admin_migrate():
+    pwd = request.headers.get('X-Admin-Password') or request.args.get('pwd') or ''
+    if pwd != ADMIN_PASSWORD:
+        return jsonify({'error': 'No autorizado'}), 401
+    db = get_db(); cur = db.cursor()
+    steps = []
+    # Añadir msg_ts si no existe
+    try:
+        cur.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS msg_ts TEXT")
+        db.commit(); steps.append('msg_ts column added')
+    except Exception as e:
+        db.rollback(); steps.append(f'msg_ts: {e}')
+    # Crear índice único en msg_ts
+    try:
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_msg_ts ON reports(msg_ts) WHERE msg_ts IS NOT NULL")
+        db.commit(); steps.append('unique index msg_ts created')
+    except Exception as e:
+        db.rollback(); steps.append(f'index: {e}')
+    # Eliminar constraint antiguo si existe
+    for constraint in ['reports_date_mediator_turn_key', 'reports_unique_seq']:
+        try:
+            cur.execute(f"ALTER TABLE reports DROP CONSTRAINT IF EXISTS {constraint}")
+            db.commit(); steps.append(f'dropped {constraint}')
+        except Exception as e:
+            db.rollback(); steps.append(f'{constraint}: {e}')
+    return jsonify({'ok': True, 'steps': steps})
+
+@app.route('/api/admin/reload-seed', methods=['POST'])
+def admin_reload_seed():
+    pwd = request.headers.get('X-Admin-Password') or request.args.get('pwd') or ''
+    if pwd != ADMIN_PASSWORD:
+        return jsonify({'error': 'No autorizado'}), 401
+    seed_file = os.path.join(os.path.dirname(__file__), 'seed.json')
+    if not os.path.exists(seed_file):
+        return jsonify({'error': 'seed.json no encontrado'}), 404
+    with open(seed_file, encoding='utf-8') as f:
+        data = json.load(f)
+    db = get_db(); cur = db.cursor()
+    inserted = duplicates = 0
+    for r in data:
+        try:
+            cur.execute("""INSERT INTO reports
+                (date,msg_ts,mediator,turn,mood,conducta,estiramientos,agua,pis,
+                 banyo,estado,comunicacion,actividades,comidas,medicacion,
+                 notas,vocab,formato,body_preview)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (msg_ts) DO NOTHING""",
+                (r.get('date'),r.get('msg_ts'),
+                 r.get('mediator'),r.get('turn','sin especificar'),
+                 r.get('mood','?'),r.get('conducta',0),r.get('estiramientos',0),
+                 r.get('agua'),r.get('pis'),r.get('banyo',''),r.get('estado',''),
+                 r.get('comunicacion',''),r.get('actividades',''),r.get('comidas',''),
+                 r.get('medicacion',''),r.get('notas',''),
+                 json.dumps(r.get('vocab',[]),ensure_ascii=False),
+                 r.get('formato','v1'),r.get('body_preview','')[:300]))
+            if cur.rowcount > 0: inserted += 1
+            else: duplicates += 1
+        except: db.rollback()
+    db.commit()
+    return jsonify({'ok': True, 'inserted': inserted, 'duplicates': duplicates, 'total': len(data)})
+
+@app.route('/api/admin/truncate', methods=['POST'])
+def admin_truncate():
+    pwd = request.headers.get('X-Admin-Password') or request.args.get('pwd') or ''
+    if pwd != ADMIN_PASSWORD:
+        return jsonify({'error': 'No autorizado'}), 401
+    db = get_db(); cur = db.cursor()
+    cur.execute("TRUNCATE TABLE reports RESTART IDENTITY")
+    cur.execute("TRUNCATE TABLE upload_log RESTART IDENTITY")
+    db.commit()
+    return jsonify({'ok': True, 'msg': 'BD vaciada'})
+
+@app.route('/guia')
+def guia():
+    return send_file('static/guia_dashboard.pdf', as_attachment=False)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
