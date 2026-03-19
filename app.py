@@ -303,25 +303,24 @@ def upload():
             ))
 
     inserted = 0
-    SQL = "INSERT INTO reports (date,mediator,turn,mood,conducta,estiramientos,agua,pis,banyo,estado,comunicacion,actividades,comidas,medicacion,notas,vocab,formato,body_preview) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+    SQL = "INSERT INTO reports (date,mediator,turn,mood,conducta,estiramientos,agua,pis,banyo,estado,comunicacion,actividades,comidas,medicacion,notas,vocab,formato,body_preview) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id"
+    new_ids = []
     if to_insert:
         try:
-            cur.executemany(SQL, to_insert)
-            inserted = len(to_insert)
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            print("executemany error:", str(e)[:200])
             for row in to_insert:
                 try:
                     cur.execute("SAVEPOINT s1")
                     cur.execute(SQL, row)
+                    new_ids.append(cur.fetchone()['id'])
                     cur.execute("RELEASE SAVEPOINT s1")
                     inserted += 1
                 except:
                     cur.execute("ROLLBACK TO SAVEPOINT s1")
                     cur.execute("RELEASE SAVEPOINT s1")
             db.commit()
+        except Exception as e:
+            db.rollback()
+            print("upload error:", str(e)[:200])
 
     dates = sorted(r['date'] for r in reports)
     try:
@@ -329,8 +328,49 @@ def upload():
                     (len(reports), inserted, duplicates, dates[0], dates[-1]))
         db.commit()
     except: pass
+
+    # ── Parseo V3 automático en background para los informes nuevos ──────────
+    if new_ids and os.environ.get("GEMINI_API_KEY"):
+        def _auto_parse_v3(ids):
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            from parser_v3 import parse_message as v3_parse, get_client as v3_client, load_few_shot_examples
+            try:
+                conn = psycopg2.connect(os.environ["DATABASE_URL"], cursor_factory=RealDictCursor)
+                cur2 = conn.cursor()
+                # Asegurar tabla existe
+                from migrate_v3 import migrate
+                try: migrate()
+                except: pass
+                # Cargar few-shot desde correcciones validadas
+                few_shot = load_few_shot_examples(os.environ["DATABASE_URL"])
+                client = v3_client()
+                placeholders = ','.join(['%s'] * len(ids))
+                cur2.execute(f"SELECT id, date, mediator, turn, body_preview FROM reports WHERE id IN ({placeholders})", ids)
+                msgs = [dict(r) for r in cur2.fetchall()]
+                for msg in msgs:
+                    try:
+                        body = msg.get('body_preview') or ''
+                        parsed = v3_parse(body, client=client, few_shot_examples=few_shot)
+                        parsed['_source_date'] = msg['date'].isoformat() if msg.get('date') else None
+                        parsed['_source_mediator'] = msg.get('mediator')
+                        from app_v3_routes import _upsert_v3
+                        wcur = conn.cursor()
+                        _upsert_v3(wcur, parsed, msg['id'], body)
+                        conn.commit()
+                        time.sleep(0.6)
+                    except Exception as e:
+                        conn.rollback()
+                        print(f"auto v3 parse error id={msg.get('id')}: {e}")
+                conn.close()
+                print(f"Auto V3 parse: {len(msgs)} informes procesados")
+            except Exception as e:
+                print(f"Auto V3 background error: {e}")
+        threading.Thread(target=_auto_parse_v3, args=(new_ids,), daemon=True).start()
+
     return jsonify({'ok': True, 'total_in_file': len(reports), 'new_inserted': inserted,
-                    'duplicates': duplicates, 'date_from': dates[0], 'date_to': dates[-1]})
+                    'duplicates': duplicates, 'date_from': dates[0], 'date_to': dates[-1],
+                    'v3_parsing': inserted > 0 and bool(os.environ.get("GEMINI_API_KEY"))})
 
 @app.route('/api/reports')
 @require_auth
@@ -1145,6 +1185,362 @@ def migrate_v3_endpoint():
     from migrate_v3 import migrate
     migrate()
     return jsonify({"ok": True, "message": "Tabla reports_v3 creada"})
+
+
+# ── CORRECCIONES DE ENTRENAMIENTO IA ──────────────────────────────────────────
+def init_training_tables():
+    """Crea las tablas de correcciones y documentos médicos si no existen."""
+    try:
+        db = psycopg2.connect(DATABASE_URL)
+        cur = db.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS training_corrections (
+                id SERIAL PRIMARY KEY,
+                report_id INTEGER REFERENCES reports(id) ON DELETE SET NULL,
+                original_preview TEXT,
+                corrections_json JSONB NOT NULL,
+                note TEXT DEFAULT '',
+                validated BOOLEAN DEFAULT false,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_tc_validated ON training_corrections(validated);
+            CREATE TABLE IF NOT EXISTS medical_documents (
+                id SERIAL PRIMARY KEY,
+                filename TEXT NOT NULL,
+                doc_type TEXT DEFAULT 'informe_clinico',
+                content_summary TEXT,
+                raw_text TEXT,
+                gemini_analysis JSONB DEFAULT '{}',
+                uploaded_at TIMESTAMPTZ DEFAULT NOW()
+            );
+        """)
+        db.commit()
+        cur.close(); db.close()
+    except Exception as e:
+        print(f"init_training_tables error: {e}")
+
+
+@app.route("/api/training/corrections", methods=["GET"])
+@require_auth
+def get_corrections():
+    init_training_tables()
+    db = get_db(); cur = db.cursor()
+    cur.execute("""
+        SELECT id, report_id, original_preview, corrections_json, note, validated, created_at
+        FROM training_corrections ORDER BY created_at DESC LIMIT 100
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        if r.get('created_at'): r['created_at'] = r['created_at'].isoformat()
+    return jsonify({'corrections': rows, 'total': len(rows)})
+
+
+@app.route("/api/training/corrections", methods=["POST"])
+@require_auth
+def save_correction():
+    init_training_tables()
+    data = request.get_json() or {}
+    corrections = data.get('corrections')
+    if not corrections:
+        return jsonify({'error': 'corrections requerido'}), 400
+    db = get_db(); cur = db.cursor()
+    cur.execute("""
+        INSERT INTO training_corrections (report_id, original_preview, corrections_json, note)
+        VALUES (%s, %s, %s, %s) RETURNING id
+    """, (
+        data.get('report_id'),
+        data.get('original_preview', '')[:500],
+        json.dumps(corrections, ensure_ascii=False),
+        data.get('note', '')
+    ))
+    new_id = cur.fetchone()['id']
+    db.commit()
+    return jsonify({'ok': True, 'id': new_id})
+
+
+@app.route("/api/training/corrections/<int:cid>/validate", methods=["POST"])
+@require_auth
+def validate_correction(cid):
+    """Marcar una corrección como validada — se usará en el prompt few-shot."""
+    db = get_db(); cur = db.cursor()
+    cur.execute("UPDATE training_corrections SET validated=true WHERE id=%s", (cid,))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+@app.route("/api/training/corrections/<int:cid>", methods=["DELETE"])
+@require_auth
+def delete_correction_db(cid):
+    db = get_db(); cur = db.cursor()
+    cur.execute("DELETE FROM training_corrections WHERE id=%s", (cid,))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+@app.route("/api/training/stats", methods=["GET"])
+@require_auth
+def training_stats():
+    init_training_tables()
+    db = get_db(); cur = db.cursor()
+    cur.execute("""
+        SELECT COUNT(*) as total,
+               COUNT(CASE WHEN validated THEN 1 END) as validated,
+               COUNT(CASE WHEN NOT validated THEN 1 END) as pending
+        FROM training_corrections
+    """)
+    return jsonify(dict(cur.fetchone()))
+
+
+# ── DOCUMENTOS MÉDICOS ────────────────────────────────────────────────────────
+@app.route("/api/medical/upload", methods=["POST"])
+@require_auth
+def upload_medical():
+    """Sube un PDF o imagen médica y lo procesa con Gemini."""
+    init_training_tables()
+    if 'file' not in request.files:
+        return jsonify({'error': 'No se recibió archivo'}), 400
+
+    file = request.files['file']
+    filename = file.filename or 'documento'
+    file_bytes = file.read()
+    mime = file.content_type or 'application/octet-stream'
+
+    # Determinar tipo
+    is_pdf = filename.lower().endswith('.pdf') or mime == 'application/pdf'
+    is_img = any(filename.lower().endswith(ext) for ext in ['.jpg','.jpeg','.png','.webp','.heic'])
+
+    if not (is_pdf or is_img):
+        return jsonify({'error': 'Solo se aceptan PDF e imágenes (jpg, png, webp)'}), 400
+
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if not gemini_key:
+        return jsonify({'error': 'GEMINI_API_KEY no configurada'}), 503
+
+    try:
+        import base64
+        from google import genai as gai
+        from google.genai import types as gtypes
+
+        client = gai.Client(api_key=gemini_key)
+        b64 = base64.b64encode(file_bytes).decode()
+
+        MEDICAL_PROMPT = """Analiza este documento médico o clínico relacionado con una persona con sordoceguera.
+Extrae y estructura la siguiente información en JSON:
+{
+  "tipo_documento": "informe_medico|analisis|receta|historia_clinica|otro",
+  "fecha_documento": "YYYY-MM-DD o null",
+  "especialidad": "nombre de la especialidad médica",
+  "diagnosticos": ["lista de diagnósticos o condiciones mencionadas"],
+  "medicacion_actual": ["medicamentos con dosis si aparecen"],
+  "observaciones_conducta": "cualquier mención a conducta, agitación, autolesiones",
+  "patrones_relevantes": "patrones temporales, estacionales o de circunstancias que puedan predecir conducta",
+  "recomendaciones": ["recomendaciones del médico"],
+  "resumen": "resumen en 2-3 frases del contenido más relevante para el seguimiento diario"
+}
+Devuelve SOLO JSON válido, sin markdown ni explicaciones."""
+
+        content_part = gtypes.Part.from_bytes(data=file_bytes, mime_type=mime)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[content_part, MEDICAL_PROMPT]
+        )
+        raw = response.text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"): raw = raw[4:]
+        raw = raw.strip()
+
+        try:
+            analysis = json.loads(raw)
+        except:
+            analysis = {"resumen": raw[:500], "error": "No se pudo parsear JSON"}
+
+        db = get_db(); cur = db.cursor()
+        cur.execute("""
+            INSERT INTO medical_documents (filename, doc_type, content_summary, gemini_analysis)
+            VALUES (%s, %s, %s, %s) RETURNING id
+        """, (
+            filename,
+            analysis.get('tipo_documento', 'otro'),
+            analysis.get('resumen', '')[:500],
+            json.dumps(analysis, ensure_ascii=False)
+        ))
+        new_id = cur.fetchone()['id']
+        db.commit()
+
+        return jsonify({'ok': True, 'id': new_id, 'analysis': analysis})
+
+    except Exception as e:
+        return jsonify({'error': f'Error procesando documento: {str(e)}'}), 500
+
+
+@app.route("/api/medical/documents", methods=["GET"])
+@require_auth
+def get_medical_documents():
+    init_training_tables()
+    db = get_db(); cur = db.cursor()
+    cur.execute("SELECT id, filename, doc_type, content_summary, gemini_analysis, uploaded_at FROM medical_documents ORDER BY uploaded_at DESC")
+    rows = [dict(r) for r in cur.fetchall()]
+    for r in rows:
+        if r.get('uploaded_at'): r['uploaded_at'] = r['uploaded_at'].isoformat()
+    return jsonify({'documents': rows})
+
+
+@app.route("/api/medical/documents/<int:doc_id>", methods=["DELETE"])
+@require_auth
+def delete_medical_document(doc_id):
+    db = get_db(); cur = db.cursor()
+    cur.execute("DELETE FROM medical_documents WHERE id=%s", (doc_id,))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+# ── INFORME MENSUAL CON PREDICCIÓN ────────────────────────────────────────────
+@app.route("/api/monthly-report", methods=["POST"])
+@require_auth
+def generate_monthly_report():
+    """Genera un informe mensual con análisis y predicciones usando Gemini."""
+    data = request.get_json() or {}
+    year = data.get('year', datetime.now().year)
+    month = data.get('month', datetime.now().month)
+
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if not gemini_key:
+        return jsonify({'error': 'GEMINI_API_KEY no configurada'}), 503
+
+    db = get_db(); cur = db.cursor()
+
+    # Datos del mes actual
+    cur.execute("""
+        SELECT date, mediator, turn, mood, conducta, agua, pis, medicacion,
+               estado, actividades, body_preview,
+               LEAST(5.0, GREATEST(0.0, (
+                 (CASE WHEN mood='muy_positivo' THEN 1.0 WHEN mood='positivo' THEN 0.75
+                       WHEN mood='neutro' THEN 0.5 WHEN mood='negativo' THEN 0.0 ELSE 0.5 END)*0.45
+                 +(CASE WHEN conducta=0 THEN 1.0 WHEN conducta=1 THEN 0.4 ELSE 0.0 END)*0.35
+                 +(CASE WHEN LOWER(COALESCE(medicacion,'')) SIMILAR TO
+                   '%%(nolotil|paracetamol|ibuprofeno|diazepam|lorazepam)%%'
+                   THEN 0.0 ELSE 1.0 END)*0.20
+                 -(CASE WHEN conducta>=2 THEN 0.25 ELSE 0.0 END)
+               )*5.0)) as estado_score
+        FROM reports
+        WHERE EXTRACT(YEAR FROM date)=%s AND EXTRACT(MONTH FROM date)=%s
+        ORDER BY date
+    """, (year, month))
+    month_reports = [dict(r) for r in cur.fetchall()]
+
+    # Datos V3 del mes (conducta desglosada)
+    v3_data = []
+    try:
+        cur.execute("""
+            SELECT date, mediator, turn, autoagresiones, agresiones_mediador,
+                   agresiones_terceros, aleteos, agua_ml, sueno_horas,
+                   desayuno, almuerzo, comida, merienda, cena, estado
+            FROM reports_v3
+            WHERE EXTRACT(YEAR FROM date)=%s AND EXTRACT(MONTH FROM date)=%s
+            ORDER BY date
+        """, (year, month))
+        v3_data = [dict(r) for r in cur.fetchall()]
+    except: pass
+
+    # Tendencia 3 meses anteriores
+    cur.execute("""
+        SELECT TO_CHAR(date,'YYYY-MM') as month,
+               COUNT(*) as informes,
+               ROUND(AVG(CASE WHEN mood='muy_positivo' THEN 4 WHEN mood='positivo' THEN 3
+                              WHEN mood='neutro' THEN 2 WHEN mood='negativo' THEN 1 ELSE 2.5 END)::numeric,2) as avg_mood,
+               ROUND(100.0*SUM(CASE WHEN conducta>0 THEN 1 ELSE 0 END)/COUNT(*),1) as pct_picos
+        FROM reports
+        WHERE date >= (DATE_TRUNC('month', MAKE_DATE(%s,%s,1)) - INTERVAL '3 months')
+          AND date < MAKE_DATE(%s,%s,1)
+        GROUP BY month ORDER BY month
+    """, (year, month, year, month))
+    trend = [dict(r) for r in cur.fetchall()]
+
+    # Documentos médicos relevantes
+    medical_context = ""
+    try:
+        cur.execute("SELECT content_summary, gemini_analysis FROM medical_documents ORDER BY uploaded_at DESC LIMIT 3")
+        med_docs = cur.fetchall()
+        if med_docs:
+            medical_context = "\n\nCONTEXTO MÉDICO DISPONIBLE:\n" + "\n".join(
+                [f"- {r['content_summary']}" for r in med_docs if r['content_summary']]
+            )
+    except: pass
+
+    if not month_reports:
+        return jsonify({'error': f'No hay datos para {year}-{month:02d}'}), 404
+
+    # Serializar fechas
+    for r in month_reports:
+        if r.get('date'): r['date'] = r['date'].isoformat() if hasattr(r['date'],'isoformat') else str(r['date'])
+    for r in v3_data:
+        if r.get('date'): r['date'] = r['date'].isoformat() if hasattr(r['date'],'isoformat') else str(r['date'])
+
+    # Construir prompt para Gemini
+    report_prompt = f"""Eres un especialista en análisis de datos de bienestar para personas con sordoceguera.
+Analiza los siguientes datos del mes {year}-{month:02d} de Jorge (usuario de Fundación Háptica, Zaragoza) y genera un informe mensual estructurado.
+
+DATOS DEL MES ({len(month_reports)} informes):
+{json.dumps(month_reports[:50], ensure_ascii=False, default=str)}
+
+DATOS CONDUCTA DESGLOSADA V3 ({len(v3_data)} informes):
+{json.dumps(v3_data[:30], ensure_ascii=False, default=str)}
+
+TENDENCIA ÚLTIMOS 3 MESES:
+{json.dumps(trend, ensure_ascii=False)}
+{medical_context}
+
+Genera el informe en JSON con esta estructura:
+{{
+  "periodo": "{year}-{month:02d}",
+  "resumen_ejecutivo": "2-3 frases con lo más destacado del mes",
+  "estado_general": {{
+    "score_medio": número,
+    "tendencia": "mejora|estable|empeoramiento",
+    "descripcion": "descripción del estado general"
+  }},
+  "conducta": {{
+    "total_incidencias": número,
+    "tipos_predominantes": ["lista de tipos más frecuentes"],
+    "patron_temporal": "descripción de cuándo ocurren más (turno, días de semana, etc.)",
+    "comparativa_mes_anterior": "mejor|igual|peor + explicación"
+  }},
+  "bienestar_fisico": {{
+    "hidratacion": "buena|regular|baja + promedio ml",
+    "sueno": "descripción si hay datos",
+    "alimentacion": "descripción si hay datos V3"
+  }},
+  "mediadores": {{
+    "mas_informes": "mediador con más informes",
+    "observacion": "cualquier patrón relevante por mediador"
+  }},
+  "prediccion_proximo_mes": {{
+    "nivel_riesgo": "bajo|medio|alto",
+    "factores": ["factores que pueden influir el próximo mes"],
+    "recomendaciones": ["3-5 recomendaciones concretas para el equipo"]
+  }},
+  "alertas": ["alertas importantes si las hay, o lista vacía"],
+  "logros": ["logros positivos destacables del mes"]
+}}
+Devuelve SOLO JSON válido, sin markdown."""
+
+    try:
+        from google import genai as gai
+        client = gai.Client(api_key=gemini_key)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=report_prompt,
+        )
+        raw = response.text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"): raw = raw[4:]
+        raw = raw.strip()
+        report_data = json.loads(raw)
+        return jsonify({'ok': True, 'report': report_data, 'year': year, 'month': month})
+    except Exception as e:
+        return jsonify({'error': f'Error generando informe: {str(e)}'}), 500
 
 
 init_db()

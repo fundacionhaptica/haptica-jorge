@@ -249,7 +249,6 @@ tbody td{padding:6px 10px;vertical-align:middle}
     <button class="btn-hdr" onclick="openAnnotations()" style="background:rgba(255,255,255,.13)">📌 Anotaciones</button>
     <button class="btn-hdr" onclick="openUpload()">📂 Actualizar datos</button>
     <button class="btn-hdr" onclick="openTraining()" style="background:rgba(124,58,237,.35);border-color:rgba(167,139,250,.5)">🤖 Entrenamiento IA</button>
-    <button class="btn-hdr" onclick="openAdmin()" style="background:rgba(255,255,255,.08);font-size:.75rem" title="Mantenimiento">⚙️</button>
     <a href="/guia" target="_blank" class="btn-hdr" style="text-decoration:none" title="Guía técnica del dashboard">📄 Guía</a>
     <button class="btn-hdr" onclick="logout()">↩ Salir</button>
   </div>
@@ -1091,6 +1090,7 @@ function handleUpload(file) {
         document.getElementById('ur2').innerHTML='✅ Nuevos insertados: <b>'+d.new_inserted+'</b>';
         document.getElementById('ur3').innerHTML='♻️ Duplicados ignorados: <b>'+d.duplicates+'</b>';
         document.getElementById('ur4').innerHTML='📅 Rango: <b>'+(d.date_from||'—')+' → '+(d.date_to||'—')+'</b>';
+        if(d.v3_parsing) document.getElementById('ur4').innerHTML+='<br><span style="color:#7c3aed;font-size:.75rem">🤖 Parseo IA en progreso en segundo plano...</span>';
         if(d.new_inserted>0) document.getElementById('btn-reload').style.display='block';
         if(d.total_in_file===0){
           el.classList.add('error');
@@ -1169,6 +1169,274 @@ function deleteAnnotation(id) {
     .then(function(d){STATS=d;updateHeader();renderAnnList();renderOverview();});
 }
 
+
+
+// ── ENTRENAMIENTO IA — TABS ───────────────────────────────────────────────────
+function showTrTab(tab) {
+  ['correcciones','medicos','informe','estadotr'].forEach(function(t) {
+    document.getElementById('trpanel-'+t).style.display = t===tab ? 'block' : 'none';
+    var btn = document.getElementById('trtab-'+t);
+    if(btn){ btn.style.background = t===tab ? '#7c3aed' : 'transparent'; btn.style.color = t===tab ? '#fff' : '#5b21b6'; }
+  });
+  if(tab==='medicos') loadMedicalDocuments();
+  if(tab==='estadotr') loadTrainingStats();
+  if(tab==='informe') initReportSelectors();
+}
+
+function openTraining(){
+  document.getElementById('training-modal').classList.add('open');
+  var sel=document.getElementById('tr-mediator');
+  sel.innerHTML='<option value="">Todos</option>'+MEDIATORS.map(function(m){return '<option value="'+m+'">'+m+'</option>';}).join('');
+  showTrTab('correcciones');
+  loadCorrectionsFromDB();
+}
+function closeTraining(){ document.getElementById('training-modal').classList.remove('open'); }
+
+// ── CORRECCIONES — sincronizadas con BD ───────────────────────────────────────
+function loadCorrectionsFromDB() {
+  var el = document.getElementById('tr-corrections-list'); if(!el) return;
+  apiFetch('/api/training/corrections').then(function(r){return r.json();}).then(function(d){
+    var corrections = d.corrections || [];
+    if(!corrections.length){el.innerHTML='<span style="color:#94a3b8">Sin correcciones guardadas todavía</span>';return;}
+    el.innerHTML = corrections.slice(0,15).map(function(c){
+      var corr = c.corrections_json || {};
+      var fields = Object.keys(corr).map(function(k){
+        return '<span style="background:#ede9fe;color:#5b21b6;border-radius:4px;padding:1px 5px;margin-right:3px;font-size:.71rem">'+k+': '+corr[k]+'</span>';
+      }).join('');
+      return '<div style="border:1px solid #e5e7eb;border-radius:7px;padding:.5rem .8rem;margin-bottom:.4rem;background:'+(c.validated?'#f0fdf4':'#fafafa')+'">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.2rem">' +
+          '<span style="font-weight:600;font-size:.8rem">'+(c.original_preview||'').slice(0,40)+'...</span>' +
+          '<div style="display:flex;gap:.3rem;align-items:center">' +
+            (c.validated ? '<span style="font-size:.7rem;color:#16a34a">✓ validada</span>' :
+              '<button onclick="validateCorrection('+c.id+')" style="font-size:.7rem;padding:2px 7px;border-radius:5px;border:1px solid #16a34a;color:#16a34a;background:#fff;cursor:pointer">✓ Validar</button>') +
+            '<button onclick="deleteCorrectionsDB('+c.id+')" style="background:#fee2e2;color:#dc2626;border:none;border-radius:5px;padding:1px 6px;font-size:.7rem;cursor:pointer">✕</button>' +
+          '</div>' +
+        '</div>' +
+        '<div>'+fields+'</div>' +
+        (c.note?'<div style="font-size:.72rem;color:#6b7280;margin-top:2px">📝 '+c.note+'</div>':'') +
+      '</div>';
+    }).join('') +
+    (corrections.length>15?'<div style="font-size:.72rem;color:#94a3b8;text-align:center">... y '+(corrections.length-15)+' más</div>':'');
+  }).catch(function(){ el.innerHTML='<span style="color:#dc2626;font-size:.8rem">Error cargando correcciones</span>'; });
+}
+
+function saveCorrection(){
+  if(!_trSelected)return;
+  var keys=['estado','autoagresiones','agresiones_mediador','agresiones_terceros','aleteos','agua_ml','pis','caca','desayuno','almuerzo','comida','merienda','cena','actividad','vocabulario'];
+  var corrections={};
+  keys.forEach(function(k){var v=document.getElementById('trf-'+k);if(v&&v.value.trim())corrections[k]=v.value.trim();});
+  if(!Object.keys(corrections).length){document.getElementById('tr-save-msg').style.color='#dc2626';document.getElementById('tr-save-msg').textContent='Rellena al menos un campo';return;}
+  var msg = document.getElementById('tr-save-msg');
+  msg.style.color='#6b7280'; msg.textContent='Guardando...';
+  apiFetch('/api/training/corrections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    report_id: _trSelected.id || null,
+    original_preview: (_trSelected.body_preview||'').slice(0,500),
+    corrections: corrections,
+    note: document.getElementById('tr-note').value.trim()
+  })}).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){
+      msg.style.color='#16a34a';msg.textContent='✅ Guardado en BD (ID: '+d.id+') — se usará en próximos parseos';
+      document.querySelectorAll('#tr-fields input').forEach(function(i){i.value='';});
+      document.getElementById('tr-note').value='';
+      loadCorrectionsFromDB();
+    } else { msg.style.color='#dc2626';msg.textContent='Error: '+(d.error||'desconocido'); }
+  }).catch(function(e){msg.style.color='#dc2626';msg.textContent='Error: '+e.message;});
+}
+
+function validateCorrection(id){
+  apiFetch('/api/training/corrections/'+id+'/validate',{method:'POST'})
+    .then(function(){loadCorrectionsFromDB();});
+}
+function deleteCorrectionsDB(id){
+  apiFetch('/api/training/corrections/'+id,{method:'DELETE'}).then(function(){loadCorrectionsFromDB();});
+}
+function exportCorrections(){
+  apiFetch('/api/training/corrections').then(function(r){return r.json();}).then(function(d){
+    var b=new Blob([JSON.stringify(d.corrections,null,2)],{type:'application/json'});
+    var a=document.createElement('a');a.href=URL.createObjectURL(b);
+    a.download='haptica_corrections_'+new Date().toISOString().slice(0,10)+'.json';a.click();
+  });
+}
+
+function loadTrainingStats(){
+  var el=document.getElementById('tr-ia-stats-content');
+  apiFetch('/api/training/stats').then(function(r){return r.json();}).then(function(d){
+    apiFetch('/api/v3/stats').then(function(r){return r.json();}).then(function(v3){
+      el.innerHTML=
+        '<div style="display:flex;flex-wrap:wrap;gap:.6rem;margin-bottom:1rem">'+
+          _v3kpi('📚',d.total||0,'Correcciones totales')+
+          _v3kpi('✅',d.validated||0,'Validadas (usadas en IA)','#16a34a')+
+          _v3kpi('⏳',d.pending||0,'Pendientes de validar','#ea7c00')+
+          _v3kpi('🤖',v3&&v3.total||0,'Informes parseados V3')+
+        '</div>'+
+        '<div style="background:#f5f3ff;border-radius:8px;padding:.8rem 1rem;font-size:.82rem;color:#4c1d95;line-height:1.7">'+
+          '<strong>¿Cómo mejora la IA?</strong><br>'+
+          '1. Busca un informe → selecciona → corrige los campos erróneos → Guardar<br>'+
+          '2. Valida la corrección (botón ✓ Validar) para que entre en el pool de ejemplos<br>'+
+          '3. En el próximo parseo, Gemini recibe los últimos 10 ejemplos validados como referencia<br>'+
+          '4. Con más ejemplos validados, el parseo es más preciso en los patrones de tus mediadores'+
+        '</div>';
+    });
+  }).catch(function(){el.innerHTML='<div style="color:#dc2626;font-size:.82rem">Error cargando estadísticas</div>';});
+}
+
+// ── DOCUMENTOS MÉDICOS ────────────────────────────────────────────────────────
+function uploadMedical(file){
+  if(!file) return;
+  var status = document.getElementById('med-upload-status');
+  status.style.display='block';
+  status.style.background='#eff6ff';status.style.color='#1e40af';
+  status.textContent='🔄 Analizando documento con IA... esto puede tardar unos segundos';
+  var fd = new FormData();
+  fd.append('file', file);
+  apiFetch('/api/medical/upload',{method:'POST',body:fd})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.ok){
+        status.style.background='#f0fdf4';status.style.color='#14532d';
+        status.textContent='✅ Documento analizado y guardado: '+( d.analysis&&d.analysis.resumen||'OK');
+        document.getElementById('med-file-input').value='';
+        loadMedicalDocuments();
+      } else {
+        status.style.background='#fef2f2';status.style.color='#dc2626';
+        status.textContent='❌ '+(d.error||'Error desconocido');
+      }
+    }).catch(function(e){
+      status.style.background='#fef2f2';status.style.color='#dc2626';
+      status.textContent='❌ '+e.message;
+    });
+}
+
+function loadMedicalDocuments(){
+  var el = document.getElementById('med-documents-list');
+  apiFetch('/api/medical/documents').then(function(r){return r.json();}).then(function(d){
+    var docs = d.documents||[];
+    if(!docs.length){el.innerHTML='<div style="color:#94a3b8;font-size:.82rem;text-align:center;padding:1rem">No hay documentos médicos subidos todavía</div>';return;}
+    el.innerHTML = docs.map(function(doc){
+      var analysis = doc.gemini_analysis||{};
+      var diags = (analysis.diagnosticos||[]).slice(0,3).join(', ');
+      return '<div style="border:1px solid #dbeafe;border-radius:8px;padding:.7rem .9rem;margin-bottom:.4rem;background:#fff">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start">' +
+          '<div style="flex:1">' +
+            '<div style="font-weight:600;font-size:.82rem;color:#1e293b">📄 '+doc.filename+'</div>' +
+            '<div style="font-size:.75rem;color:#64748b;margin-top:2px">'+(doc.doc_type||'—')+' · '+(doc.uploaded_at||'').slice(0,10)+'</div>' +
+            '<div style="font-size:.78rem;color:#374151;margin-top:4px">'+(doc.content_summary||'Sin resumen')+'</div>' +
+            (diags?'<div style="font-size:.72rem;color:#7c3aed;margin-top:3px">Diagnósticos: '+diags+'</div>':'') +
+          '</div>' +
+          '<button onclick="deleteMedDoc('+doc.id+')" style="background:#fee2e2;color:#dc2626;border:none;border-radius:5px;padding:2px 7px;font-size:.72rem;cursor:pointer;flex-shrink:0;margin-left:.5rem">✕</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }).catch(function(){el.innerHTML='<div style="color:#dc2626;font-size:.82rem">Error cargando documentos</div>';});
+}
+
+function deleteMedDoc(id){
+  apiFetch('/api/medical/documents/'+id,{method:'DELETE'}).then(function(){loadMedicalDocuments();});
+}
+
+// Drag & drop para documentos médicos
+document.addEventListener('DOMContentLoaded', function(){
+  var label = document.querySelector('label[for="med-file-input"]');
+  if(label){
+    label.addEventListener('dragover',function(e){e.preventDefault();label.style.borderColor='#2563eb';label.style.background='#eff6ff';});
+    label.addEventListener('dragleave',function(){label.style.borderColor='#ddd6fe';label.style.background='#fafafa';});
+    label.addEventListener('drop',function(e){e.preventDefault();label.style.borderColor='#ddd6fe';label.style.background='#fafafa';if(e.dataTransfer.files[0])uploadMedical(e.dataTransfer.files[0]);});
+  }
+});
+
+// ── INFORME MENSUAL ───────────────────────────────────────────────────────────
+var _monthlyReport = null;
+
+function initReportSelectors(){
+  var ySel = document.getElementById('rep-year');
+  if(ySel && !ySel.options.length){
+    var curY = new Date().getFullYear();
+    for(var y=curY;y>=2019;y--) ySel.innerHTML += '<option value="'+y+'"'+(y===curY?' selected':'')+'>'+y+'</option>';
+  }
+  var mSel = document.getElementById('rep-month');
+  if(mSel) mSel.value = new Date().getMonth()+1;
+}
+
+function generateMonthlyReport(){
+  var year = parseInt(document.getElementById('rep-year').value);
+  var month = parseInt(document.getElementById('rep-month').value);
+  var el = document.getElementById('monthly-report-content');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Generando informe con IA... (~10 segundos)</div>';
+  document.getElementById('btn-export-report').style.display='none';
+  apiFetch('/api/monthly-report',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({year:year,month:month})})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(!d.ok){el.innerHTML='<div style="color:#dc2626;font-size:.85rem;padding:1rem">❌ '+(d.error||'Error')+'</div>';return;}
+      _monthlyReport = d.report;
+      document.getElementById('btn-export-report').style.display='inline-block';
+      renderMonthlyReport(d.report, year, month);
+    }).catch(function(e){el.innerHTML='<div style="color:#dc2626;font-size:.85rem;padding:1rem">❌ '+e.message+'</div>';});
+}
+
+function renderMonthlyReport(r, year, month){
+  var meses=['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var riskColor = r.prediccion_proximo_mes&&r.prediccion_proximo_mes.nivel_riesgo==='alto'?'#dc2626':r.prediccion_proximo_mes&&r.prediccion_proximo_mes.nivel_riesgo==='medio'?'#ea7c00':'#16a34a';
+  var tendColor = r.estado_general&&r.estado_general.tendencia==='mejora'?'#16a34a':r.estado_general&&r.estado_general.tendencia==='empeoramiento'?'#dc2626':'#ea7c00';
+  var tendIcon = r.estado_general&&r.estado_general.tendencia==='mejora'?'📈':r.estado_general&&r.estado_general.tendencia==='empeoramiento'?'📉':'➡️';
+
+  document.getElementById('monthly-report-content').innerHTML =
+    '<div style="border-bottom:2px solid #16a34a;padding-bottom:.6rem;margin-bottom:.8rem">'+
+      '<div style="font-size:1.1rem;font-weight:700;color:#14532d">📊 Informe '+meses[month]+' '+year+'</div>'+
+      '<div style="font-size:.85rem;color:#374151;margin-top:.3rem;line-height:1.5">'+(r.resumen_ejecutivo||'')+'</div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:.8rem">'+
+      '<div class="kpi" style="border:1px solid #e5e7eb"><div class="kpi-ico">😊</div><div class="kpi-val" style="font-size:1.4rem">'+((r.estado_general&&r.estado_general.score_medio)||'—')+'</div><div class="kpi-label">Estado medio</div></div>'+
+      '<div class="kpi" style="border:1px solid #e5e7eb"><div class="kpi-ico">'+tendIcon+'</div><div class="kpi-val" style="color:'+tendColor+';font-size:1rem;text-transform:capitalize">'+((r.estado_general&&r.estado_general.tendencia)||'—')+'</div><div class="kpi-label">Tendencia</div></div>'+
+      '<div class="kpi" style="border:1px solid #e5e7eb"><div class="kpi-ico">⚡</div><div class="kpi-val">'+((r.conducta&&r.conducta.total_incidencias)||0)+'</div><div class="kpi-label">Incidencias</div></div>'+
+    '</div>'+
+    _reportSection('⚡ Conducta', r.conducta ? [
+      ['Total incidencias', r.conducta.total_incidencias],
+      ['Tipos predominantes', (r.conducta.tipos_predominantes||[]).join(', ')],
+      ['Patrón temporal', r.conducta.patron_temporal],
+      ['vs mes anterior', r.conducta.comparativa_mes_anterior],
+    ] : [])+
+    _reportSection('🏃 Bienestar físico', r.bienestar_fisico ? [
+      ['Hidratación', r.bienestar_fisico.hidratacion],
+      ['Sueño', r.bienestar_fisico.sueno||'Sin datos'],
+      ['Alimentación', r.bienestar_fisico.alimentacion||'Sin datos V3'],
+    ] : [])+
+    (r.prediccion_proximo_mes?
+      '<div class="cc" style="margin-bottom:.6rem;border:2px solid '+riskColor+'">' +
+        '<div class="cc-title" style="color:'+riskColor+'">🔮 Predicción próximo mes — Riesgo <b style="text-transform:uppercase">'+(r.prediccion_proximo_mes.nivel_riesgo||'—')+'</b></div>'+
+        '<div style="font-size:.8rem;color:#374151;margin-bottom:.4rem"><b>Factores:</b> '+((r.prediccion_proximo_mes.factores||[]).join(' · '))+'</div>'+
+        '<div style="font-size:.8rem"><b style="color:#16a34a">Recomendaciones:</b><ul style="margin:.3rem 0 0 1rem;padding:0">'+
+          (r.prediccion_proximo_mes.recomendaciones||[]).map(function(rec){return '<li style="margin-bottom:2px">'+rec+'</li>';}).join('')+
+        '</ul></div>'+
+      '</div>' : '')+
+    ((r.alertas&&r.alertas.length)?
+      '<div style="background:#fef2f2;border:1.5px solid #dc2626;border-radius:8px;padding:.6rem .9rem;margin-bottom:.6rem;font-size:.8rem">'+
+        '<b style="color:#dc2626">⚠️ Alertas:</b> '+(r.alertas||[]).join(' · ')+'</div>' : '')+
+    ((r.logros&&r.logros.length)?
+      '<div style="background:#f0fdf4;border:1.5px solid #16a34a;border-radius:8px;padding:.6rem .9rem;font-size:.8rem">'+
+        '<b style="color:#16a34a">✅ Logros del mes:</b><ul style="margin:.3rem 0 0 1rem;padding:0">'+
+          (r.logros||[]).map(function(l){return '<li style="margin-bottom:2px">'+l+'</li>';}).join('')+'</ul></div>' : '');
+}
+
+function _reportSection(title, rows){
+  if(!rows||!rows.length) return '';
+  return '<div class="cc" style="margin-bottom:.6rem"><div class="cc-title">'+title+'</div>'+
+    rows.filter(function(r){return r[1]!=null&&r[1]!==''&&r[1]!=='undefined';}).map(function(r){
+      return '<div style="display:flex;gap:.5rem;font-size:.8rem;margin-bottom:3px;align-items:baseline">'+
+        '<span style="min-width:120px;color:#64748b;font-weight:500">'+r[0]+':</span>'+
+        '<span style="color:#374151">'+r[1]+'</span></div>';
+    }).join('') +
+  '</div>';
+}
+
+function exportMonthlyReport(){
+  if(!_monthlyReport) return;
+  var b=new Blob([JSON.stringify(_monthlyReport,null,2)],{type:'application/json'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(b);
+  var m=document.getElementById('rep-month').value;
+  var y=document.getElementById('rep-year').value;
+  a.download='informe_'+y+'_'+String(m).padStart(2,'0')+'.json';a.click();
+}
 
 // ── PESTAÑA V3 — CONDUCTA DETALLADA ──────────────────────────────────────────
 function renderV3Tab() {
@@ -1512,50 +1780,113 @@ function adminAction(action) {
 
 <!-- MODAL ENTRENAMIENTO IA -->
 <div class="modal-overlay" id="training-modal">
-  <div class="modal" style="max-width:720px;max-height:92vh;display:flex;flex-direction:column">
+  <div class="modal" style="max-width:780px;max-height:94vh;display:flex;flex-direction:column">
     <div class="modal-hdr" style="background:linear-gradient(135deg,#5b21b6,#7c3aed)">
-      <h3>🤖 Entrenamiento IA — Corrección de parseos</h3>
+      <h3>🤖 Entrenamiento IA — Corrección y aprendizaje</h3>
       <button class="modal-close" onclick="closeTraining()">✕</button>
     </div>
+    <!-- Tabs internos -->
+    <div style="display:flex;gap:2px;padding:8px 12px;background:#f5f3ff;border-bottom:1px solid #ddd6fe">
+      <button class="tr-tab active" onclick="showTrTab('correcciones')" id="trtab-correcciones" style="padding:5px 14px;border-radius:6px;border:none;font-size:.8rem;font-weight:500;cursor:pointer;background:#7c3aed;color:#fff;font-family:inherit">✏️ Correcciones</button>
+      <button class="tr-tab" onclick="showTrTab('medicos')" id="trtab-medicos" style="padding:5px 14px;border-radius:6px;border:none;font-size:.8rem;font-weight:500;cursor:pointer;background:transparent;color:#5b21b6;font-family:inherit">🏥 Docs médicos</button>
+      <button class="tr-tab" onclick="showTrTab('informe')" id="trtab-informe" style="padding:5px 14px;border-radius:6px;border:none;font-size:.8rem;font-weight:500;cursor:pointer;background:transparent;color:#5b21b6;font-family:inherit">📊 Informe mensual</button>
+      <button class="tr-tab" onclick="showTrTab('estadotr')" id="trtab-estadotr" style="padding:5px 14px;border-radius:6px;border:none;font-size:.8rem;font-weight:500;cursor:pointer;background:transparent;color:#5b21b6;font-family:inherit">📈 Estado IA</button>
+    </div>
     <div style="padding:1rem;overflow-y:auto;flex:1">
-      <div style="background:#f5f3ff;border-left:3px solid #7c3aed;border-radius:6px;padding:.7rem 1rem;font-size:.8rem;color:#4c1d95;margin-bottom:1rem;line-height:1.6">
-        <strong>¿Para qué sirve?</strong> Gemini puede cometer errores al parsear. Aquí puedes buscar un informe, ver el texto original junto al resultado de la IA, corregir los campos erróneos y guardar la corrección para mejorar futuros parseos.
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:.5rem;margin-bottom:.8rem;align-items:end">
-        <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:3px">Mediador</div>
-          <select id="tr-mediator" style="width:100%;padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.83rem;font-family:inherit"><option value="">Todos</option></select></div>
-        <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:3px">Fecha</div>
-          <input type="date" id="tr-date" style="width:100%;padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.83rem;font-family:inherit"></div>
-        <button onclick="trainSearch()" style="padding:8px 16px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:.83rem;font-weight:600;cursor:pointer;font-family:inherit">🔍 Buscar</button>
-      </div>
-      <div id="tr-results" style="margin-bottom:.8rem">
-        <div style="color:#94a3b8;font-size:.82rem;text-align:center;padding:1.5rem">Busca un informe para revisar su parseo</div>
-      </div>
-      <div id="tr-correction-panel" style="display:none">
-        <div style="border-top:2px solid #7c3aed;padding-top:.8rem;margin-top:.5rem">
-          <div style="font-size:.82rem;font-weight:700;color:#5b21b6;margin-bottom:.6rem">✏️ Corrección del parseo seleccionado</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-bottom:.8rem">
-            <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:.3rem">📄 Texto original</div>
-              <div id="tr-original-text" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:.7rem;font-size:.75rem;line-height:1.6;max-height:180px;overflow-y:auto;white-space:pre-wrap;font-family:monospace;color:#374151"></div></div>
-            <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:.3rem">🤖 Interpretación IA</div>
-              <div id="tr-ia-result" style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:.7rem;font-size:.75rem;line-height:1.8;max-height:180px;overflow-y:auto"></div></div>
+
+      <!-- TAB CORRECCIONES -->
+      <div id="trpanel-correcciones">
+        <div style="background:#f5f3ff;border-left:3px solid #7c3aed;border-radius:6px;padding:.6rem 1rem;font-size:.8rem;color:#4c1d95;margin-bottom:.8rem;line-height:1.5">
+          <strong>¿Cómo funciona?</strong> Cada corrección que guardes se sincroniza con la BD y se usa automáticamente en los próximos parseos (few-shot learning). Cuantas más correcciones validadas haya, más precisa será la IA.
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:.5rem;margin-bottom:.8rem;align-items:end">
+          <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:3px">Mediador</div>
+            <select id="tr-mediator" style="width:100%;padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.83rem;font-family:inherit"><option value="">Todos</option></select></div>
+          <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:3px">Fecha</div>
+            <input type="date" id="tr-date" style="width:100%;padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.83rem;font-family:inherit"></div>
+          <button onclick="trainSearch()" style="padding:8px 16px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:.83rem;font-weight:600;cursor:pointer;font-family:inherit">🔍 Buscar</button>
+        </div>
+        <div id="tr-results" style="margin-bottom:.8rem">
+          <div style="color:#94a3b8;font-size:.82rem;text-align:center;padding:1.5rem">Busca un informe para revisar su parseo</div>
+        </div>
+        <div id="tr-correction-panel" style="display:none">
+          <div style="border-top:2px solid #7c3aed;padding-top:.8rem;margin-top:.5rem">
+            <div style="font-size:.82rem;font-weight:700;color:#5b21b6;margin-bottom:.6rem">✏️ Corrección</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-bottom:.8rem">
+              <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:.3rem">📄 Texto original</div>
+                <div id="tr-original-text" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:.7rem;font-size:.75rem;line-height:1.6;max-height:160px;overflow-y:auto;white-space:pre-wrap;font-family:monospace;color:#374151"></div></div>
+              <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:.3rem">🤖 Interpretación IA</div>
+                <div id="tr-ia-result" style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:.7rem;font-size:.75rem;line-height:1.8;max-height:160px;overflow-y:auto"></div></div>
+            </div>
+            <div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:.4rem">🎯 Campos a corregir (deja en blanco los correctos)</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.6rem" id="tr-fields"></div>
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <input type="text" id="tr-note" placeholder="Nota sobre el error (opcional)" style="flex:1;padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.82rem;font-family:inherit">
+              <button onclick="saveCorrection()" style="padding:8px 18px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:.83rem;font-weight:600;cursor:pointer;font-family:inherit">💾 Guardar y sincronizar</button>
+            </div>
+            <div id="tr-save-msg" style="font-size:.8rem;margin-top:.4rem"></div>
           </div>
-          <div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:.4rem">🎯 Campos a corregir (deja en blanco los que estén bien)</div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.6rem" id="tr-fields"></div>
-          <div style="display:flex;align-items:center;gap:.5rem">
-            <input type="text" id="tr-note" placeholder="Nota sobre el error (opcional)" style="flex:1;padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.82rem;font-family:inherit">
-            <button onclick="saveCorrection()" style="padding:8px 18px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:.83rem;font-weight:600;cursor:pointer;font-family:inherit">💾 Guardar</button>
+        </div>
+        <div style="border-top:1px solid #e5e7eb;padding-top:.8rem;margin-top:.8rem">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+            <div style="font-size:.78rem;font-weight:600;color:#374151">📚 Correcciones en BD</div>
+            <div style="display:flex;gap:.4rem">
+              <button onclick="loadCorrectionsFromDB()" style="font-size:.73rem;color:#7c3aed;background:none;border:none;cursor:pointer;font-family:inherit">↻ Actualizar</button>
+              <button onclick="exportCorrections()" style="font-size:.73rem;padding:4px 8px;border-radius:5px;border:1.5px solid #7c3aed;color:#7c3aed;background:#fff;cursor:pointer;font-family:inherit">📥 Exportar</button>
+            </div>
           </div>
-          <div id="tr-save-msg" style="font-size:.8rem;margin-top:.4rem"></div>
+          <div id="tr-corrections-list" style="font-size:.78rem;color:#94a3b8">Cargando...</div>
         </div>
       </div>
-      <div style="border-top:1px solid #e5e7eb;padding-top:.8rem;margin-top:.8rem">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-          <div style="font-size:.78rem;font-weight:600;color:#374151">📚 Correcciones guardadas</div>
-          <button onclick="loadCorrections()" style="font-size:.73rem;color:#7c3aed;background:none;border:none;cursor:pointer;font-family:inherit">↻ Actualizar</button>
+
+      <!-- TAB DOCS MÉDICOS -->
+      <div id="trpanel-medicos" style="display:none">
+        <div style="background:#eff6ff;border-left:3px solid #2563eb;border-radius:6px;padding:.6rem 1rem;font-size:.8rem;color:#1e40af;margin-bottom:.8rem;line-height:1.5">
+          <strong>Documentos médicos</strong> — Sube informes clínicos o imágenes de documentos médicos. Gemini los analiza y extrae contexto clínico relevante que se usa para enriquecer el análisis y las predicciones de conducta.
         </div>
-        <div id="tr-corrections-list" style="font-size:.78rem;color:#94a3b8">Cargando...</div>
+        <div style="display:flex;gap:.5rem;margin-bottom:.8rem;align-items:center">
+          <label style="flex:1;border:2px dashed #ddd6fe;border-radius:10px;padding:.8rem;text-align:center;cursor:pointer;background:#fafafa;font-size:.82rem;color:#6b7280" for="med-file-input">
+            📎 Arrastra un PDF o imagen aquí, o haz clic para seleccionar<br>
+            <span style="font-size:.72rem;color:#94a3b8">PDF, JPG, PNG, WEBP — máx 10MB</span>
+          </label>
+          <input type="file" id="med-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" style="display:none" onchange="uploadMedical(this.files[0])">
+        </div>
+        <div id="med-upload-status" style="display:none;font-size:.82rem;padding:.5rem .8rem;border-radius:7px;margin-bottom:.8rem"></div>
+        <div id="med-documents-list">
+          <div style="color:#94a3b8;font-size:.82rem;text-align:center;padding:1rem">Cargando documentos...</div>
+        </div>
       </div>
+
+      <!-- TAB INFORME MENSUAL -->
+      <div id="trpanel-informe" style="display:none">
+        <div style="background:#f0fdf4;border-left:3px solid #16a34a;border-radius:6px;padding:.6rem 1rem;font-size:.8rem;color:#14532d;margin-bottom:.8rem;line-height:1.5">
+          <strong>Informe mensual con IA</strong> — Genera un análisis completo del mes seleccionado con resumen ejecutivo, análisis de conducta, bienestar físico, tendencias y <strong>predicciones para el próximo mes</strong>.
+        </div>
+        <div style="display:flex;gap:.5rem;margin-bottom:.8rem;align-items:end">
+          <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:3px">Año</div>
+            <select id="rep-year" style="padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.83rem;font-family:inherit"></select></div>
+          <div><div style="font-size:.73rem;font-weight:600;color:#374151;margin-bottom:3px">Mes</div>
+            <select id="rep-month" style="padding:7px 9px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.83rem;font-family:inherit">
+              <option value="1">Enero</option><option value="2">Febrero</option><option value="3">Marzo</option>
+              <option value="4">Abril</option><option value="5">Mayo</option><option value="6">Junio</option>
+              <option value="7">Julio</option><option value="8">Agosto</option><option value="9">Septiembre</option>
+              <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+            </select></div>
+          <button onclick="generateMonthlyReport()" style="padding:8px 18px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-size:.83rem;font-weight:600;cursor:pointer;font-family:inherit">✨ Generar informe</button>
+          <button onclick="exportMonthlyReport()" id="btn-export-report" style="display:none;padding:8px 14px;border-radius:8px;border:1.5px solid #16a34a;color:#16a34a;background:#fff;font-size:.83rem;font-weight:600;cursor:pointer;font-family:inherit">📥 Exportar JSON</button>
+        </div>
+        <div id="monthly-report-content">
+          <div style="color:#94a3b8;font-size:.82rem;text-align:center;padding:2rem">Selecciona un mes y pulsa Generar informe</div>
+        </div>
+      </div>
+
+      <!-- TAB ESTADO IA -->
+      <div id="trpanel-estadotr" style="display:none">
+        <div id="tr-ia-stats-content">
+          <div class="loading"><div class="spinner"></div> Cargando...</div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>

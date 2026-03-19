@@ -2,6 +2,7 @@
 parser_v3.py — Parser IA para informes de mediación · Fundación Háptica
 Usa Gemini Flash 2.0 (gratuito) para extraer campos estructurados.
 Tabla destino: reports_v3 (en paralelo con reports, sin tocarlo)
+Incluye few-shot learning desde correcciones guardadas en BD.
 """
 import os
 import json
@@ -13,6 +14,41 @@ from google import genai
 from google.genai import types
 
 logger = logging.getLogger(__name__)
+
+# ── FEW-SHOT: cargar correcciones desde BD ────────────────────────────────────
+def load_few_shot_examples(db_url: str, limit: int = 10) -> str:
+    """
+    Carga las últimas correcciones validadas de la BD y las formatea
+    como ejemplos few-shot para añadir al prompt de Gemini.
+    """
+    try:
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        conn = psycopg2.connect(db_url, cursor_factory=RealDictCursor)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT original_preview, corrections_json
+            FROM training_corrections
+            WHERE validated = true
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (limit,))
+        rows = cur.fetchall()
+        conn.close()
+        if not rows:
+            return ""
+        examples = ["\n\nEJEMPLOS DE CORRECCIONES VALIDADAS (aprende de estos casos):"]
+        for r in rows:
+            try:
+                corrections = json.loads(r['corrections_json']) if isinstance(r['corrections_json'], str) else r['corrections_json']
+                examples.append(f"\nTexto: {r['original_preview'][:300]}")
+                examples.append(f"Corrección validada: {json.dumps(corrections, ensure_ascii=False)}")
+            except Exception:
+                continue
+        return "\n".join(examples)
+    except Exception as e:
+        logger.warning(f"No se pudieron cargar few-shot examples: {e}")
+        return ""
 
 # ── PROMPT DEL SISTEMA ────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """Eres un parser especializado en informes de mediación para personas con sordoceguera de la Fundación Háptica (Zaragoza).
@@ -79,10 +115,11 @@ def get_client() -> genai.Client:
     return genai.Client(api_key=api_key)
 
 
-def parse_message(text: str, client: Optional[genai.Client] = None, retries: int = 3) -> dict:
+def parse_message(text: str, client: Optional[genai.Client] = None,
+                  retries: int = 3, few_shot_examples: str = "") -> dict:
     """
     Parsea un mensaje de WhatsApp y devuelve un dict con todos los campos.
-    Hace hasta `retries` intentos ante errores de API o JSON inválido.
+    few_shot_examples: string con ejemplos de correcciones validadas para inyectar al prompt.
     """
     if not text or len(text.strip()) < 30:
         return {**EMPTY_RESULT}
@@ -90,13 +127,18 @@ def parse_message(text: str, client: Optional[genai.Client] = None, retries: int
     if client is None:
         client = get_client()
 
+    # Construir prompt enriquecido con few-shot si hay ejemplos
+    prompt = SYSTEM_PROMPT
+    if few_shot_examples:
+        prompt = SYSTEM_PROMPT + few_shot_examples
+
     last_error = None
     for attempt in range(retries):
         try:
             response = client.models.generate_content(
                 model="gemini-2.0-flash",
                 config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
+                    system_instruction=prompt,
                     temperature=0.0,
                     max_output_tokens=1024,
                 ),
