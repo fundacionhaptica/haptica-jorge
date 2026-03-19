@@ -136,7 +136,7 @@ def parse_message(text: str, client: Optional[genai.Client] = None,
     for attempt in range(retries):
         try:
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-1.5-flash",
                 config=types.GenerateContentConfig(
                     system_instruction=prompt,
                     temperature=0.0,
@@ -195,7 +195,9 @@ def parse_message(text: str, client: Optional[genai.Client] = None,
         except Exception as e:
             last_error = f"Error API Gemini (intento {attempt+1}): {e}"
             logger.warning(last_error)
-            time.sleep(2 ** attempt)  # backoff exponencial
+            # 429 quota: esperar más tiempo
+            wait = 30 if '429' in str(e) or 'RESOURCE_EXHAUSTED' in str(e) else 2 ** attempt
+            time.sleep(wait)
 
     logger.error(f"parse_message falló tras {retries} intentos: {last_error}")
     return {**EMPTY_RESULT, "_parse_error": last_error}

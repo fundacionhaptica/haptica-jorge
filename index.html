@@ -2010,7 +2010,7 @@ async function p2Parse() {
   if(!msg) { p2setStatus('Pega un mensaje primero.','error'); return; }
   var btn = document.getElementById('p2-parse-btn');
   btn.disabled = true; btn.textContent = '⏳ Parseando...';
-  p2setStatus('Enviando a Claude...','info');
+  p2setStatus('Enviando a Gemini...','info');
   try {
     var resp = await apiFetch('/api/v2/parse', {
       method: 'POST',
@@ -2031,7 +2031,7 @@ async function p2Parse() {
   } catch(e) {
     p2setStatus('❌ Error: ' + e.message,'error');
   } finally {
-    btn.disabled = false; btn.textContent = 'Parsear con Claude';
+    btn.disabled = false; btn.textContent = 'Parsear con Gemini';
   }
 }
 
@@ -2294,7 +2294,7 @@ function p2updateBanner() {
 
 async function p2ImprovePrompt() {
   if(!p2State.errorLog.length) { p2setStatus('No hay correcciones registradas aún.','info'); return; }
-  p2setStatus('⏳ Mejorando prompt con Claude...','info');
+  p2setStatus('⏳ Mejorando prompt con Gemini...','info');
   try {
     var resp = await apiFetch('/api/v2/improve-prompt', {
       method:'POST',
@@ -2462,7 +2462,7 @@ function p2setStatus(msg, type) {
               <div style="font-size:.72rem;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Mensaje WhatsApp</div>
               <textarea id="p2-input" style="width:100%;height:160px;border:1.5px solid #ddd;border-radius:8px;padding:9px;font-family:monospace;font-size:.75rem;resize:vertical;background:#fafaf8" placeholder="Pega aquí el mensaje del mediador..."></textarea>
               <div style="display:flex;gap:.4rem;margin:.4rem 0">
-                <button id="p2-parse-btn" onclick="p2Parse()" style="padding:7px 16px;border-radius:6px;border:none;background:#4444aa;color:#fff;font-size:.8rem;font-weight:500;cursor:pointer;font-family:inherit">Parsear con Claude</button>
+                <button id="p2-parse-btn" onclick="p2Parse()" style="padding:7px 16px;border-radius:6px;border:none;background:#4444aa;color:#fff;font-size:.8rem;font-weight:500;cursor:pointer;font-family:inherit">Parsear con Gemini</button>
                 <button onclick="p2LoadEx(1)" style="padding:7px 10px;border-radius:6px;border:1px solid #ccc;background:#fff;font-size:.75rem;cursor:pointer;font-family:inherit">Ej. Jonathan</button>
                 <button onclick="p2LoadEx(2)" style="padding:7px 10px;border-radius:6px;border:1px solid #ccc;background:#fff;font-size:.75rem;cursor:pointer;font-family:inherit">Ej. Raúl</button>
                 <button onclick="p2Clear()"   style="padding:7px 10px;border-radius:6px;border:1px solid #ccc;background:#fff;font-size:.75rem;cursor:pointer;font-family:inherit">Limpiar</button>

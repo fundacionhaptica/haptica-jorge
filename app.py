@@ -1283,7 +1283,7 @@ No elimines reglas que funcionen bien. Devuelve SOLO el prompt reescrito, sin ex
         user_msg = f"PROMPT ACTUAL:\n{current_prompt}\n\nERRORES DETECTADOS ({len(errors)}):\n{error_summary}\n\nReescribe el prompt corrigiendo estos errores."
 
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-1.5-flash",
             contents=user_msg,
         )
         new_prompt = response.text.strip()
@@ -1459,7 +1459,7 @@ Devuelve SOLO JSON válido, sin markdown ni explicaciones."""
 
         content_part = gtypes.Part.from_bytes(data=file_bytes, mime_type=mime)
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-1.5-flash",
             contents=[content_part, MEDICAL_PROMPT]
         )
         raw = response.text.strip()
@@ -1647,7 +1647,7 @@ Devuelve SOLO JSON válido, sin markdown."""
         from google import genai as gai
         client = gai.Client(api_key=gemini_key)
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-1.5-flash",
             contents=report_prompt,
         )
         raw = response.text.strip()
