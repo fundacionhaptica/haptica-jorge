@@ -1149,7 +1149,7 @@ def v3_reparse_all():
             for i, msg in enumerate(messages):
                 try:
                     body = msg.get("body_preview") or ""
-                    parsed = v3_parse_message(body, client=client)
+                    parsed = v3_parse_message(body, client=client, model="gemini-1.5-flash")
                     parsed["_source_date"] = msg["date"].isoformat() if msg.get("date") else None
                     parsed["_source_mediator"] = msg.get("mediator")
                     wcur = conn.cursor()
@@ -1459,7 +1459,7 @@ Devuelve SOLO JSON válido, sin markdown ni explicaciones."""
 
         content_part = gtypes.Part.from_bytes(data=file_bytes, mime_type=mime)
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.0-flash",
             contents=[content_part, MEDICAL_PROMPT]
         )
         raw = response.text.strip()
@@ -1647,7 +1647,7 @@ Devuelve SOLO JSON válido, sin markdown."""
         from google import genai as gai
         client = gai.Client(api_key=gemini_key)
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.0-flash",
             contents=report_prompt,
         )
         raw = response.text.strip()
@@ -1748,7 +1748,7 @@ def v2_improve_prompt():
             '\n\nReescribe el prompt corrigiendo estos errores.'
         )
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-1.5-flash',
             contents=improve_meta + '\n\n' + user_msg,
         )
         new_prompt = response.text.strip()

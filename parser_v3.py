@@ -116,7 +116,8 @@ def get_client() -> genai.Client:
 
 
 def parse_message(text: str, client: Optional[genai.Client] = None,
-                  retries: int = 3, few_shot_examples: str = "") -> dict:
+                  retries: int = 3, few_shot_examples: str = "",
+                  model: str = "gemini-2.0-flash") -> dict:
     """
     Parsea un mensaje de WhatsApp y devuelve un dict con todos los campos.
     few_shot_examples: string con ejemplos de correcciones validadas para inyectar al prompt.
@@ -136,7 +137,7 @@ def parse_message(text: str, client: Optional[genai.Client] = None,
     for attempt in range(retries):
         try:
             response = client.models.generate_content(
-                model="gemini-1.5-flash",
+                model=model,
                 config=types.GenerateContentConfig(
                     system_instruction=prompt,
                     temperature=0.0,
