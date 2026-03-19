@@ -2012,21 +2012,14 @@ async function p2Parse() {
   btn.disabled = true; btn.textContent = '⏳ Parseando...';
   p2setStatus('Enviando a Claude...','info');
   try {
-    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+    var resp = await apiFetch('/api/v2/parse', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        system: p2State.prompt,
-        messages: [{ role: 'user', content: msg }]
-      })
+      body: JSON.stringify({ text: msg, system_prompt: p2State.prompt })
     });
     var data = await resp.json();
-    if(data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-    var raw = (data.content && data.content[0] && data.content[0].text) || '';
-    var clean = raw.replace(/```json|```/g,'').trim();
-    var parsed = JSON.parse(clean);
+    if(!data.ok) throw new Error(data.error || 'Error en el parseo');
+    var parsed = data.parsed;
     p2State.currentParsed = Object.assign({}, parsed, {_raw: msg, _timestamp: new Date().toISOString()});
     p2renderResult(parsed);
     p2addHistory(parsed, msg);
@@ -2302,22 +2295,15 @@ function p2updateBanner() {
 async function p2ImprovePrompt() {
   if(!p2State.errorLog.length) { p2setStatus('No hay correcciones registradas aún.','info'); return; }
   p2setStatus('⏳ Mejorando prompt con Claude...','info');
-  var recent = p2State.errorLog.slice(-30);
-  var summary = recent.map(function(e){ return 'Campo "'+e.field+'": parseó "'+e.parsed+'" → correcto era "'+e.corrected+'"'; }).join('\n');
-  var userMsg = 'PROMPT ACTUAL:\n'+p2State.prompt+'\n\nERRORES DETECTADOS ('+recent.length+'):\n'+summary+'\n\nReescribe el prompt corrigiendo estos errores.';
   try {
-    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+    var resp = await apiFetch('/api/v2/improve-prompt', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        model:'claude-sonnet-4-6', max_tokens:2000,
-        system: P2_IMPROVE_PROMPT,
-        messages:[{role:'user',content:userMsg}]
-      })
+      body: JSON.stringify({ current_prompt: p2State.prompt, errors: p2State.errorLog.slice(-30) })
     });
     var data = await resp.json();
-    if(data.error) throw new Error(data.error.message);
-    var newPrompt = (data.content&&data.content[0]&&data.content[0].text||'').trim();
+    if(!data.ok) throw new Error(data.error || 'Error al mejorar');
+    var newPrompt = data.new_prompt;
     if(!newPrompt||newPrompt.length<100) throw new Error('Respuesta inválida');
     p2savePromptVersion('Mejora automática tras '+recent.length+' correcciones');
     p2State.prompt = newPrompt;

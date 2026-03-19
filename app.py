@@ -1661,8 +1661,100 @@ Devuelve SOLO JSON válido, sin markdown."""
         return jsonify({'error': f'Error generando informe: {str(e)}'}), 500
 
 
+
 init_db()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
+
+# ── PARSER V2 — endpoints proxy Gemini para el frontend ───────────────────────
+
+@app.route('/api/v2/parse', methods=['POST'])
+@require_auth
+def v2_parse():
+    """Parsea un mensaje con Gemini usando el prompt activo (o uno personalizado)."""
+    if not V3_AVAILABLE:
+        return jsonify({'error': 'parser_v3 no disponible'}), 503
+    data = request.get_json() or {}
+    text = (data.get('text') or '').strip()
+    custom_prompt = (data.get('system_prompt') or '').strip()
+    if not text:
+        return jsonify({'error': 'Campo text requerido'}), 400
+    if not os.environ.get('GEMINI_API_KEY'):
+        return jsonify({'error': 'GEMINI_API_KEY no configurada'}), 503
+    try:
+        client = v3_get_client()
+        if custom_prompt and len(custom_prompt) > 50:
+            from google import genai as _gai
+            from google.genai import types as _gtypes
+            import json as _json
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                config=_gtypes.GenerateContentConfig(
+                    system_instruction=custom_prompt,
+                    temperature=0.0,
+                    max_output_tokens=1024,
+                ),
+                contents=text[:3000],
+            )
+            raw = response.text.strip()
+            if raw.startswith('```'):
+                parts = raw.split('```')
+                raw = parts[1] if len(parts) > 1 else raw
+                if raw.startswith('json'):
+                    raw = raw[4:]
+            raw = raw.strip()
+            parsed = _json.loads(raw)
+        else:
+            few_shot = v3_few_shot(os.environ.get('DATABASE_URL', ''))
+            parsed = v3_parse_message(text, client=client, few_shot_examples=few_shot)
+        return jsonify({'ok': True, 'parsed': parsed})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v2/improve-prompt', methods=['POST'])
+@require_auth
+def v2_improve_prompt():
+    """Mejora el prompt del parser usando Gemini a partir de errores detectados."""
+    data = request.get_json() or {}
+    current_prompt = data.get('current_prompt', '')
+    errors = data.get('errors', [])
+    if not errors:
+        return jsonify({'error': 'No hay errores para mejorar'}), 400
+    if not os.environ.get('GEMINI_API_KEY'):
+        return jsonify({'error': 'GEMINI_API_KEY no configurada'}), 503
+    try:
+        from google import genai as _gai
+        client = _gai.Client(api_key=os.environ['GEMINI_API_KEY'])
+        improve_meta = (
+            "Eres un experto en prompt engineering para sistemas de parseo de texto en español. "
+            "Se te proporciona el prompt actual de un parser de informes de mediacion y errores detectados. "
+            "Reescribe el prompt mejorándolo para corregir esos errores. "
+            "Mantén toda la estructura y campos. Añade reglas concretas para los patrones de error. "
+            "No elimines reglas que funcionen. Devuelve SOLO el prompt reescrito, sin explicaciones ni markdown."
+        )
+        lines = [
+            'Campo "{}": parseó "{}" → correcto era "{}"'.format(
+                e.get('field', ''), e.get('parsed', ''), e.get('corrected', ''))
+            for e in errors[-30:]
+        ]
+        error_summary = '\n'.join(lines)
+        user_msg = (
+            'PROMPT ACTUAL:\n' + current_prompt +
+            '\n\nERRORES DETECTADOS (' + str(len(errors)) + '):\n' + error_summary +
+            '\n\nReescribe el prompt corrigiendo estos errores.'
+        )
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=improve_meta + '\n\n' + user_msg,
+        )
+        new_prompt = response.text.strip()
+        if len(new_prompt) < 100:
+            return jsonify({'error': 'Respuesta vacía o inválida'}), 500
+        return jsonify({'ok': True, 'new_prompt': new_prompt})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
