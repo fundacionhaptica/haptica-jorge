@@ -68,7 +68,8 @@ def normalize_activity(line):
 
 app = Flask(__name__)
 CORS(app)
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB para chats grandes
+app.config['MAX_FORM_MEMORY_SIZE'] = 100 * 1024 * 1024
 
 DATABASE_URL   = os.environ.get('DATABASE_URL', '')
 API_PASSWORD   = os.environ.get('API_PASSWORD', 'haptica2025')
@@ -286,15 +287,28 @@ def ping():
 @app.route('/api/upload-text', methods=['POST'])
 @require_auth
 def upload_text():
-    """Igual que /api/upload pero acepta JSON {text: '...'} en lugar de multipart.
-    Más fiable en móvil y con archivos grandes."""
-    data = request.get_json(silent=True) or {}
-    text = data.get('text', '')
-    if not text:
-        return jsonify({'error': 'No se recibió texto'}), 400
-    # Reusar la misma lógica de upload
-    request.files_text = text
-    return _process_upload(text)
+    """Acepta JSON {text: '...'} o texto plano directamente.
+    Más fiable en móvil que multipart."""
+    try:
+        content_type = request.content_type or ''
+        if 'application/json' in content_type:
+            # Leer el body directamente para evitar límites de get_json
+            raw = request.get_data(as_text=True)
+            if not raw:
+                return jsonify({'error': 'Cuerpo vacío'}), 400
+            data = json.loads(raw)
+            text = data.get('text', '')
+        else:
+            # Texto plano directo
+            text = request.get_data(as_text=True)
+        if not text or len(text.strip()) < 10:
+            return jsonify({'error': 'No se recibió texto o está vacío'}), 400
+        return _process_upload(text)
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'JSON inválido: {str(e)[:100]}'}), 400
+    except Exception as e:
+        print(f"upload-text error: {e}")
+        return jsonify({'error': str(e)[:200]}), 500
 
 
 @app.route('/api/upload', methods=['POST'])
