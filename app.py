@@ -1264,6 +1264,9 @@ No elimines reglas que funcionen bien. Devuelve SOLO el prompt reescrito, sin ex
         return jsonify({'ok': True, 'new_prompt': new_prompt})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/admin/migrate-v3", methods=["GET", "POST"])
 def migrate_v3_endpoint():
     pwd = request.headers.get('X-Admin-Password','') or request.args.get('pwd','')
     if pwd != ADMIN_PASSWORD and pwd != API_PASSWORD:
