@@ -438,7 +438,7 @@ def get_reports():
             v.agresiones_terceros, v.aleteos, v.sueno_horas,
             v.desayuno, v.almuerzo, v.comida, v.merienda, v.cena,
             v.actividad AS actividad_v3, v.vocabulario AS vocabulario_v3,
-            v.observaciones
+            v.observaciones, v.estado AS estado_v3, v.medicacion AS medicacion_v3
         FROM reports r
         LEFT JOIN reports_v3 v ON (v.source_id = r.id OR (v.source_id IS NULL AND v.date = r.date AND v.mediator = r.mediator AND v.turn = r.turn))
         WHERE {' AND '.join(where)}
@@ -736,29 +736,27 @@ def vocab_stats():
     db = get_db(); cur = db.cursor()
     year = request.args.get('year', '')
     mediator = request.args.get('mediator', '')
-    where_parts = ["vocab IS NOT NULL", "vocab != '[]'"]
+    where_parts = ["1=1"]
     params = []
     if year:
         where_parts += ["date >= %s", "date < %s"]
         params += [year+"-01-01", str(int(year)+1)+"-01-01"]
     if mediator:
-        where_parts.append("mediator = %s")
+        where_parts.append("mediador = %s")
         params.append(mediator)
     where = "WHERE " + " AND ".join(where_parts)
-    cur.execute("SELECT vocab, actividades FROM reports " + where, params)
+    cur.execute("SELECT vocabulario, actividad FROM reports_v3 " + where, params)
     from collections import Counter
     vocab_count = Counter()
     act_count = Counter()
     SEP = chr(10)
     for row in cur.fetchall():
-        try:
-            v = json.loads(row['vocab']) if row['vocab'] else []
-            for w in v:
-                w = (w or '').strip().lower()
-                if len(w) > 1:
-                    vocab_count[w] += 1
-        except: pass
-        act = (row['actividades'] or '').replace(',', SEP).replace(';', SEP)
+        v_str = row.get('vocabulario') or ''
+        for w in v_str.split(','):
+            w = w.strip().lower()
+            if len(w) > 1:
+                vocab_count[w] += 1
+        act = (row.get('actividad') or '').replace(' / ', SEP)
         for line in act.split(SEP):
             norm = normalize_activity(line)
             if norm:

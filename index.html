@@ -1120,8 +1120,8 @@ function renderList() {
     var aguaVal = r.agua_ml != null ? r.agua_ml : r.agua;
 
     // — Estado/ánimo —
-    var estadoCell = hasV3 && r.estado
-      ? '<span style="font-size:.75rem;color:#374151">'+r.estado.slice(0,28)+(r.estado.length>28?'…':'')+'</span>'
+    var estadoCell = hasV3 && r.estado_v3
+      ? '<span style="font-size:.75rem;color:#374151">'+r.estado_v3.slice(0,28)+(r.estado_v3.length>28?'…':'')+'</span>'
       : '<span class="badge '+(MOOD_CLASS[r.mood]||'b-q')+'">'+(MOOD_LABEL[r.mood]||'?')+'</span>';
 
     // — Vocabulario —
@@ -1132,7 +1132,7 @@ function renderList() {
     var scoreCell = '—';
     if (hasV3) {
       // Ánimo: mapear estado texto a valor 0-5
-      var estadoStr = (r.estado||'').toLowerCase();
+      var estadoStr = (r.estado_v3||r.estado||'').toLowerCase();
       var animoScore = 2.5; // neutro por defecto
       if (estadoStr.match(/muy.?(bien|bueno|content|feliz|tranquil|positiv)/)) animoScore = 5;
       else if (estadoStr.match(/bien|bueno|content|feliz|tranquil|positiv/)) animoScore = 4;
@@ -1140,14 +1140,14 @@ function renderList() {
       else if (estadoStr.match(/mal|triste|agitad|nervios|inquiet|negativ/)) animoScore = 2;
       else if (estadoStr.match(/muy.?(mal|agitad|nervios|negativ)/)) animoScore = 1;
       // También usar mood del regex si no hay estado IA
-      if (!r.estado && r.mood) {
+      if (!r.estado_v3 && !r.estado && r.mood) {
         var moodMap = {muy_positivo:5, positivo:4, neutro:2.5, negativo:1};
         animoScore = moodMap[r.mood] || 2.5;
       }
       // Conducta: 5 si sin incidentes, penalizar por episodios
       var condScore = Math.max(0, 5 - condTotal);
       // Medicación: 5 si sin rescate, 0 si hay
-      var medStr = (r.medicacion||'').toLowerCase();
+      var medStr = (r.medicacion_v3||r.medicacion||'').toLowerCase();
       var medScore = medStr.match(/diazepam|lorazepam|haloperidol|tranquimazin|rescate/) ? 0 : 5;
       var total = (animoScore * 0.45) + (condScore * 0.35) + (medScore * 0.20);
       total = Math.round(Math.min(5, Math.max(0, total)) * 10) / 10;
