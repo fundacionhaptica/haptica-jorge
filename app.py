@@ -1596,53 +1596,34 @@ def generate_monthly_report():
     for r in v3_data:
         if r.get('date'): r['date'] = r['date'].isoformat() if hasattr(r['date'],'isoformat') else str(r['date'])
 
-    # Construir prompt para Gemini
-    report_prompt = f"""Eres un especialista en análisis de datos de bienestar para personas con sordoceguera.
-Analiza los siguientes datos del mes {year}-{month:02d} de Jorge (usuario de Fundación Háptica, Zaragoza) y genera un informe mensual estructurado.
-
-DATOS DEL MES ({len(month_reports)} informes):
-{json.dumps(month_reports[:50], ensure_ascii=False, default=str)}
-
-DATOS CONDUCTA DESGLOSADA V3 ({len(v3_data)} informes):
-{json.dumps(v3_data[:30], ensure_ascii=False, default=str)}
-
-TENDENCIA ÚLTIMOS 3 MESES:
-{json.dumps(trend, ensure_ascii=False)}
-{medical_context}
-
-Genera el informe en JSON con esta estructura:
-{{
-  "periodo": "{year}-{month:02d}",
-  "resumen_ejecutivo": "2-3 frases con lo más destacado del mes",
-  "estado_general": {{
-    "score_medio": número,
-    "tendencia": "mejora|estable|empeoramiento",
-    "descripcion": "descripción del estado general"
-  }},
-  "conducta": {{
-    "total_incidencias": número,
-    "tipos_predominantes": ["lista de tipos más frecuentes"],
-    "patron_temporal": "descripción de cuándo ocurren más (turno, días de semana, etc.)",
-    "comparativa_mes_anterior": "mejor|igual|peor + explicación"
-  }},
-  "bienestar_fisico": {{
-    "hidratacion": "buena|regular|baja + promedio ml",
-    "sueno": "descripción si hay datos",
-    "alimentacion": "descripción si hay datos V3"
-  }},
-  "mediadores": {{
-    "mas_informes": "mediador con más informes",
-    "observacion": "cualquier patrón relevante por mediador"
-  }},
-  "prediccion_proximo_mes": {{
-    "nivel_riesgo": "bajo|medio|alto",
-    "factores": ["factores que pueden influir el próximo mes"],
-    "recomendaciones": ["3-5 recomendaciones concretas para el equipo"]
-  }},
-  "alertas": ["alertas importantes si las hay, o lista vacía"],
-  "logros": ["logros positivos destacables del mes"]
-}}
-Devuelve SOLO JSON válido, sin markdown."""
+    # Construir prompt para Gemini (sin f-string para evitar problemas con { } en datos)
+    periodo = str(year) + '-' + str(month).zfill(2)
+    json_schema = (
+        '{'
+        '"periodo": "' + periodo + '",'
+        '"resumen_ejecutivo": "2-3 frases con lo mas destacado del mes",'
+        '"estado_general": {"score_medio": 0, "tendencia": "mejora|estable|empeoramiento", "descripcion": "texto"},'
+        '"conducta": {"total_incidencias": 0, "tipos_predominantes": [], "patron_temporal": "texto", "comparativa_mes_anterior": "texto"},'
+        '"bienestar_fisico": {"hidratacion": "buena|regular|baja + promedio ml", "sueno": "texto", "alimentacion": "texto"},'
+        '"mediadores": {"mas_informes": "nombre", "observacion": "texto"},'
+        '"prediccion_proximo_mes": {"nivel_riesgo": "bajo|medio|alto", "factores": [], "recomendaciones": []},'
+        '"alertas": [],'
+        '"logros": []'
+        '}'
+    )
+    report_prompt = (
+        "Eres un especialista en analisis de datos de bienestar para personas con sordoceguera.\n"
+        "Analiza los datos del mes " + periodo + " de Jorge (Fundacion Haptica, Zaragoza) y genera un informe mensual.\n\n"
+        "DATOS DEL MES (" + str(len(month_reports)) + " informes):\n"
+        + json.dumps(month_reports[:50], ensure_ascii=False, default=str) + "\n\n"
+        "DATOS CONDUCTA V3 (" + str(len(v3_data)) + " informes):\n"
+        + json.dumps(v3_data[:30], ensure_ascii=False, default=str) + "\n\n"
+        "TENDENCIA ULTIMOS 3 MESES:\n"
+        + json.dumps(trend, ensure_ascii=False)
+        + medical_context + "\n\n"
+        "Devuelve SOLO JSON valido con esta estructura exacta, sin markdown:\n"
+        + json_schema
+    )
 
     try:
         from google import genai as gai
