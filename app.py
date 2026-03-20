@@ -1538,7 +1538,7 @@ def generate_monthly_report():
                        WHEN mood='neutro' THEN 0.5 WHEN mood='negativo' THEN 0.0 ELSE 0.5 END)*0.45
                  +(CASE WHEN conducta=0 THEN 1.0 WHEN conducta=1 THEN 0.4 ELSE 0.0 END)*0.35
                  +(CASE WHEN LOWER(COALESCE(medicacion,'')) SIMILAR TO
-                   '%(nolotil|paracetamol|ibuprofeno|diazepam|lorazepam)%'
+                   '%%(nolotil|paracetamol|ibuprofeno|diazepam|lorazepam)%%'
                    THEN 0.0 ELSE 1.0 END)*0.20
                  -(CASE WHEN conducta>=2 THEN 0.25 ELSE 0.0 END)
                )*5.0)) as estado_score

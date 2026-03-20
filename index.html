@@ -1585,9 +1585,12 @@ function generateMonthlyReport(){
   document.getElementById('btn-export-report').style.display='none';
   apiFetch('/api/monthly-report',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({year:year,month:month})})
-    .then(function(r){return r.json();})
+    .then(function(r){
+      if(!r.ok) return r.text().then(function(t){throw new Error('Servidor: '+r.status+' — '+t.slice(0,200));});
+      return r.json();
+    })
     .then(function(d){
-      if(!d.ok){el.innerHTML='<div style="color:#dc2626;font-size:.85rem;padding:1rem">❌ '+(d.error||'Error')+'</div>';return;}
+      if(!d.ok){el.innerHTML='<div style="color:#dc2626;font-size:.85rem;padding:1rem">❌ '+(d.error||'Error desconocido')+'</div>';return;}
       _monthlyReport = d.report;
       document.getElementById('btn-export-report').style.display='inline-block';
       renderMonthlyReport(d.report, year, month);
