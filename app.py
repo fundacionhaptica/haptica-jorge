@@ -1043,7 +1043,7 @@ def _upsert_v3(cur, parsed: dict, source_id: int, body_preview: str):
             %(medicacion)s, %(estado)s,
             %(desayuno)s, %(almuerzo)s, %(comida)s, %(merienda)s, %(cena)s,
             %(actividad)s, %(vocabulario)s, %(observaciones)s,
-            'gemini-2.5-flash-preview-04-17', %(parse_error)s, %(body_preview)s, NOW()
+            'gemini-2.5-flash', %(parse_error)s, %(body_preview)s, NOW()
         )
         ON CONFLICT (date, mediator, turn, seq)
         DO UPDATE SET
@@ -1150,7 +1150,7 @@ def v3_reparse_all():
             for i, msg in enumerate(messages):
                 try:
                     body = msg.get("body_preview") or ""
-                    parsed = v3_parse_message(body, client=client, model="gemini-2.5-flash-preview-04-17")
+                    parsed = v3_parse_message(body, client=client, model="gemini-2.5-flash")
                     parsed["_source_date"] = msg["date"].isoformat() if msg.get("date") else None
                     parsed["_source_mediator"] = msg.get("mediator")
                     wcur = conn.cursor()
@@ -1284,7 +1284,7 @@ No elimines reglas que funcionen bien. Devuelve SOLO el prompt reescrito, sin ex
         user_msg = f"PROMPT ACTUAL:\n{current_prompt}\n\nERRORES DETECTADOS ({len(errors)}):\n{error_summary}\n\nReescribe el prompt corrigiendo estos errores."
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash-preview-04-17",
+            model="gemini-2.5-flash",
             contents=user_msg,
         )
         new_prompt = response.text.strip()
@@ -1460,7 +1460,7 @@ Devuelve SOLO JSON válido, sin markdown ni explicaciones."""
 
         content_part = gtypes.Part.from_bytes(data=file_bytes, mime_type=mime)
         response = client.models.generate_content(
-            model="gemini-2.5-flash-preview-04-17",
+            model="gemini-2.5-flash",
             contents=[content_part, MEDICAL_PROMPT]
         )
         raw = response.text.strip()
@@ -1629,7 +1629,7 @@ def generate_monthly_report():
         from google import genai as gai
         client = gai.Client(api_key=gemini_key)
         response = client.models.generate_content(
-            model="gemini-2.5-flash-preview-04-17",
+            model="gemini-2.5-flash",
             contents=report_prompt,
         )
         raw = response.text.strip()
@@ -1673,7 +1673,7 @@ def v2_parse():
             from google.genai import types as _gtypes
             import json as _json
             response = client.models.generate_content(
-                model='gemini-2.5-flash-preview-04-17',
+                model='gemini-2.5-flash',
                 config=_gtypes.GenerateContentConfig(
                     system_instruction=custom_prompt,
                     temperature=0.0,
@@ -1730,7 +1730,7 @@ def v2_improve_prompt():
             '\n\nReescribe el prompt corrigiendo estos errores.'
         )
         response = client.models.generate_content(
-            model='gemini-2.5-flash-preview-04-17',
+            model='gemini-2.5-flash',
             contents=improve_meta + '\n\n' + user_msg,
         )
         new_prompt = response.text.strip()
@@ -1802,7 +1802,7 @@ def v3_reparse_errors():
             for i, msg in enumerate(messages):
                 try:
                     body = msg.get('body_preview') or ''
-                    parsed = v3_parse_message(body, client=client, model='gemini-2.5-flash-preview-04-17', few_shot_examples=few_shot)
+                    parsed = v3_parse_message(body, client=client, model='gemini-2.5-flash', few_shot_examples=few_shot)
                     parsed['_source_date'] = msg['date'].isoformat() if msg.get('date') else None
                     parsed['_source_mediator'] = msg.get('mediator')
                     wcur = conn.cursor()
