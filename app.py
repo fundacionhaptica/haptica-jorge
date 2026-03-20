@@ -1677,17 +1677,24 @@ def v2_parse():
                 config=_gtypes.GenerateContentConfig(
                     system_instruction=custom_prompt,
                     temperature=0.0,
-                    max_output_tokens=1024,
+                    max_output_tokens=4096,
+                    thinking_config=_gtypes.ThinkingConfig(thinking_budget=0),
+                    response_mime_type="application/json",
                 ),
                 contents=text[:3000],
             )
             raw = response.text.strip()
-            if raw.startswith('```'):
-                parts = raw.split('```')
+            print(f"RAW GEMINI app.py (len={len(raw)}): {repr(raw[:500])}", flush=True)
+            if raw.startswith("```"):
+                parts = raw.split("```")
                 raw = parts[1] if len(parts) > 1 else raw
-                if raw.startswith('json'):
+                if raw.startswith("json"):
                     raw = raw[4:]
             raw = raw.strip()
+            start = raw.find("{")
+            end = raw.rfind("}") + 1
+            if start != -1 and end > start:
+                raw = raw[start:end]
             parsed = _json.loads(raw)
         else:
             few_shot = v3_few_shot(os.environ.get('DATABASE_URL', ''))
