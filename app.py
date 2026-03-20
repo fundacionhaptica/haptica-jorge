@@ -1538,7 +1538,7 @@ def generate_monthly_report():
                        WHEN mood='neutro' THEN 0.5 WHEN mood='negativo' THEN 0.0 ELSE 0.5 END)*0.45
                  +(CASE WHEN conducta=0 THEN 1.0 WHEN conducta=1 THEN 0.4 ELSE 0.0 END)*0.35
                  +(CASE WHEN LOWER(COALESCE(medicacion,'')) SIMILAR TO
-                   '%%(nolotil|paracetamol|ibuprofeno|diazepam|lorazepam)%%'
+                   '%(nolotil|paracetamol|ibuprofeno|diazepam|lorazepam)%'
                    THEN 0.0 ELSE 1.0 END)*0.20
                  -(CASE WHEN conducta>=2 THEN 0.25 ELSE 0.0 END)
                )*5.0)) as estado_score
@@ -1758,4 +1758,92 @@ def v2_improve_prompt():
         return jsonify({'ok': True, 'new_prompt': new_prompt})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+
+# ── DIAGNÓSTICO Y REPARSE DE ERRORES ─────────────────────────────────────────
+
+@app.route('/api/v3/errors-sample')
+@require_auth
+def v3_errors_sample():
+    """Devuelve una muestra de los errores de parseo para diagnóstico."""
+    try:
+        db = get_db(); cur = db.cursor()
+        cur.execute("""
+            SELECT parse_error, COUNT(*) as n
+            FROM reports_v3
+            WHERE parse_error IS NOT NULL
+            GROUP BY parse_error
+            ORDER BY n DESC
+            LIMIT 10
+        """)
+        errors = [dict(r) for r in cur.fetchall()]
+        cur.execute("SELECT COUNT(*) as total FROM reports_v3")
+        total = cur.fetchone()['total']
+        cur.execute("SELECT COUNT(*) as ok FROM reports_v3 WHERE parse_error IS NULL")
+        ok = cur.fetchone()['ok']
+        return jsonify({'total': total, 'ok': ok, 'errors': errors})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/v3/reparse-errors', methods=['POST'])
+@require_auth
+def v3_reparse_errors():
+    """Relanza el parseo solo para los registros que fallaron."""
+    if _reparse_status['running']:
+        return jsonify({'error': 'Ya hay un reparseo en curso'}), 409
+    if not V3_AVAILABLE:
+        return jsonify({'error': 'parser_v3 no disponible'}), 503
+
+    def run_reparse_errors():
+        import datetime as dt
+        _reparse_status.update({
+            'running': True, 'done': 0, 'errors': 0,
+            'started_at': dt.datetime.now().isoformat(),
+            'finished_at': None, 'last_error': None,
+        })
+        conn = psycopg2.connect(os.environ['DATABASE_URL'], cursor_factory=RealDictCursor)
+        try:
+            cur = conn.cursor()
+            # Obtener informes de reports que tienen V3 con error o sin source_id ligado
+            cur.execute("""
+                SELECT r.id, r.date, r.mediator, r.turn, r.body_preview
+                FROM reports r
+                LEFT JOIN reports_v3 v ON (v.source_id = r.id OR (v.source_id IS NULL AND v.date = r.date AND v.mediator = r.mediator AND v.turn = r.turn))
+                WHERE r.body_preview IS NOT NULL AND r.body_preview != ''
+                  AND (v.id IS NULL OR v.parse_error IS NOT NULL)
+            """)
+            messages = [dict(r) for r in cur.fetchall()]
+            _reparse_status['total'] = len(messages)
+            client = v3_get_client()
+            few_shot = v3_few_shot(os.environ.get('DATABASE_URL', ''))
+            for i, msg in enumerate(messages):
+                try:
+                    body = msg.get('body_preview') or ''
+                    parsed = v3_parse_message(body, client=client, model='gemini-1.5-flash', few_shot_examples=few_shot)
+                    parsed['_source_date'] = msg['date'].isoformat() if msg.get('date') else None
+                    parsed['_source_mediator'] = msg.get('mediator')
+                    wcur = conn.cursor()
+                    _upsert_v3(wcur, parsed, msg['id'], body)
+                    conn.commit()
+                    if parsed.get('_parse_error'):
+                        _reparse_status['errors'] += 1
+                        _reparse_status['last_error'] = parsed['_parse_error']
+                except Exception as e:
+                    conn.rollback()
+                    _reparse_status['errors'] += 1
+                    _reparse_status['last_error'] = str(e)
+                _reparse_status['done'] = i + 1
+                time.sleep(0.3)
+        except Exception as e:
+            _reparse_status['last_error'] = str(e)
+        finally:
+            conn.close()
+            _reparse_status['running'] = False
+            import datetime as dt
+            _reparse_status['finished_at'] = dt.datetime.now().isoformat()
+
+    threading.Thread(target=run_reparse_errors, daemon=True).start()
+    return jsonify({'ok': True, 'message': 'Reparseo de errores iniciado', 'status': _reparse_status})
 

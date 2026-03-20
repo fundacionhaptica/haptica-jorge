@@ -1895,6 +1895,45 @@ function adminAction(action) {
     });
 }
 
+function adminDiagnostic() {
+  var pwd = document.getElementById('admin-pwd').value;
+  if(!pwd){ alert('Introduce la contraseña admin'); return; }
+  var prog = document.getElementById('v3-reparse-progress');
+  prog.style.display='block'; prog.textContent='🔍 Consultando errores...';
+  apiFetch('/api/v3/errors-sample').then(function(r){return r.json();}).then(function(d){
+    if(d.error){ prog.textContent='❌ '+d.error; return; }
+    var pct = d.total>0 ? Math.round(d.ok/d.total*100) : 0;
+    var html = '📊 Total: '+d.total+' | ✅ OK: '+d.ok+' | ❌ Error: '+(d.total-d.ok)+' | Cobertura: '+pct+'%';
+    if(d.errors && d.errors.length){
+      html += '<br><br><strong>Errores más frecuentes:</strong><br>';
+      d.errors.forEach(function(e){ html += '• ('+e.n+'x) '+e.parse_error.slice(0,120)+'<br>'; });
+    }
+    prog.innerHTML = html;
+  }).catch(function(e){ prog.textContent='❌ '+e.message; });
+}
+
+function adminReparseErrors() {
+  var pwd = document.getElementById('admin-pwd').value;
+  if(!pwd){ alert('Introduce la contraseña admin'); return; }
+  var prog = document.getElementById('v3-reparse-progress');
+  prog.style.display='block'; prog.textContent='⏳ Lanzando reparseo de errores...';
+  apiFetch('/api/v3/reparse-errors', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({})})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(!d.ok){ prog.textContent='❌ '+(d.error||'Error'); return; }
+      prog.textContent='🔄 Reparseo de errores en curso: 0%...';
+      var interval = setInterval(function(){
+        apiFetch('/api/v3/reparse-status').then(function(r){return r.json();}).then(function(s){
+          var pct=s.percent||0; var done=s.done||0; var total=s.total||0;
+          prog.textContent = s.running
+            ? '🔄 '+pct+'% ('+done+'/'+total+' informes)...'
+            : '✅ Completado: '+done+'/'+total+' informes' + (s.errors>0?' ('+s.errors+' errores)':'');
+          if(!s.running){ clearInterval(interval); setTimeout(function(){ renderV3Tab(); }, 500); }
+        }).catch(function(){ clearInterval(interval); });
+      }, 4000);
+    }).catch(function(e){ prog.textContent='❌ '+e.message; });
+}
+
 function adminMigrateV3() {
   var pwd = document.getElementById('admin-pwd').value;
   if (!pwd) { alert('Introduce la contraseña admin'); return; }
@@ -2433,6 +2472,12 @@ function p2setStatus(msg, type) {
       <div style="font-size:.75rem;color:#6b7280;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Parseo IA (V3)</div>
       <button onclick="adminMigrateV3()" style="padding:9px;border-radius:8px;border:none;background:#0f766e;color:#fff;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit">
         🚀 Crear tabla V3 + lanzar reparseo IA
+      </button>
+      <button onclick="adminReparseErrors()" style="padding:9px;border-radius:8px;border:none;background:#b45309;color:#fff;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit">
+        🔁 Relanzar solo informes con error / sin parsear
+      </button>
+      <button onclick="adminDiagnostic()" style="padding:9px;border-radius:8px;border:none;background:#1d4ed8;color:#fff;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit">
+        🔍 Ver diagnóstico de errores V3
       </button>
       <div id="v3-reparse-progress" style="display:none;font-size:.78rem;color:#6b7280;padding:.4rem .5rem;background:#f0fdf4;border-radius:6px;border:1px solid #bbf7d0"></div>
       <div id="admin-msg" style="font-size:.82rem;padding:.5rem;border-radius:6px;display:none"></div>
