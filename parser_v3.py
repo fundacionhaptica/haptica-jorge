@@ -141,18 +141,31 @@ def parse_message(text: str, client: Optional[genai.Client] = None,
                 config=types.GenerateContentConfig(
                     system_instruction=prompt,
                     temperature=0.0,
-                    max_output_tokens=1024,
+                    max_output_tokens=4096,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
                 ),
                 contents=text[:3000],  # limitar tokens de entrada
             )
             raw = response.text.strip()
 
             # Limpiar posibles bloques markdown
-            if raw.startswith("```"):
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
+            if "```" in raw:
+                # Extraer contenido entre ``` ```
+                parts = raw.split("```")
+                for part in parts:
+                    part = part.strip()
+                    if part.startswith("json"):
+                        part = part[4:].strip()
+                    if part.startswith("{"):
+                        raw = part
+                        break
             raw = raw.strip()
+
+            # Extraer solo el JSON si hay texto extra antes/después
+            start = raw.find("{")
+            end = raw.rfind("}") + 1
+            if start != -1 and end > start:
+                raw = raw[start:end]
 
             parsed = json.loads(raw)
 
