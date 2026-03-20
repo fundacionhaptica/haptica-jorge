@@ -148,6 +148,7 @@ def parse_message(text: str, client: Optional[genai.Client] = None,
                 contents=text[:3000],  # limitar tokens de entrada
             )
             raw = response.text.strip()
+            logger.warning(f"RAW GEMINI RESPONSE (len={len(raw)}): {raw[:500]}")
 
             # Limpiar posibles bloques markdown (por si acaso)
             if "```" in raw:
