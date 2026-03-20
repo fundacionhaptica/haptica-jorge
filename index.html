@@ -1105,31 +1105,73 @@ function renderList() {
   }).join('');
   var rows = filtered.map(function(r,i) {
     var hasV3 = r.autoagresiones != null;
-    var condTotal = hasV3 ? ((r.autoagresiones||0)+(r.agresiones_mediador||0)+(r.agresiones_terceros||0)+(r.aleteos||0)) : (r.conducta||0);
+
+    // — Conducta desde IA (0 si no detectado) —
+    var autoag  = hasV3 ? (r.autoagresiones||0) : (r.conducta||0);
+    var agMed   = hasV3 ? (r.agresiones_mediador||0) : 0;
+    var agTerc  = hasV3 ? (r.agresiones_terceros||0) : 0;
+    var aleteos = hasV3 ? (r.aleteos||0) : 0;
+    var condTotal = autoag + agMed + agTerc + aleteos;
     var condCell = condTotal > 0
-      ? '<span class="badge b-ne">⚠️ '+condTotal+'</span>'
+      ? '<span class="badge b-ne" title="Auto:'+autoag+' Med:'+agMed+' Terc:'+agTerc+' Aleteos:'+aleteos+'">⚠️ '+condTotal+'</span>'
       : '<span class="badge b-p">✓</span>';
+
+    // — Agua —
     var aguaVal = r.agua_ml != null ? r.agua_ml : r.agua;
+
+    // — Estado/ánimo —
     var estadoCell = hasV3 && r.estado
       ? '<span style="font-size:.75rem;color:#374151">'+r.estado.slice(0,28)+(r.estado.length>28?'…':'')+'</span>'
       : '<span class="badge '+(MOOD_CLASS[r.mood]||'b-q')+'">'+(MOOD_LABEL[r.mood]||'?')+'</span>';
+
+    // — Vocabulario —
     var vocText = r.vocabulario_v3 ? r.vocabulario_v3.slice(0,40)
       : (function(){var vc=Array.isArray(r.vocab)?r.vocab:(typeof r.vocab==='string'?JSON.parse(r.vocab||'[]'):[]);return vc.slice(0,3).join(', ');})();
+
+    // — Score ponderado (0-5): ánimo 45% + conducta 35% + medicación 20% —
+    var scoreCell = '—';
+    if (hasV3) {
+      // Ánimo: mapear estado texto a valor 0-5
+      var estadoStr = (r.estado||'').toLowerCase();
+      var animoScore = 2.5; // neutro por defecto
+      if (estadoStr.match(/muy.?(bien|bueno|content|feliz|tranquil|positiv)/)) animoScore = 5;
+      else if (estadoStr.match(/bien|bueno|content|feliz|tranquil|positiv/)) animoScore = 4;
+      else if (estadoStr.match(/regular|variable|alternando|momentos/)) animoScore = 3;
+      else if (estadoStr.match(/mal|triste|agitad|nervios|inquiet|negativ/)) animoScore = 2;
+      else if (estadoStr.match(/muy.?(mal|agitad|nervios|negativ)/)) animoScore = 1;
+      // También usar mood del regex si no hay estado IA
+      if (!r.estado && r.mood) {
+        var moodMap = {muy_positivo:5, positivo:4, neutro:2.5, negativo:1};
+        animoScore = moodMap[r.mood] || 2.5;
+      }
+      // Conducta: 5 si sin incidentes, penalizar por episodios
+      var condScore = Math.max(0, 5 - condTotal);
+      // Medicación: 5 si sin rescate, 0 si hay
+      var medStr = (r.medicacion||'').toLowerCase();
+      var medScore = medStr.match(/diazepam|lorazepam|haloperidol|tranquimazin|rescate/) ? 0 : 5;
+      var total = (animoScore * 0.45) + (condScore * 0.35) + (medScore * 0.20);
+      total = Math.round(Math.min(5, Math.max(0, total)) * 10) / 10;
+      var scoreColor = total >= 4 ? '#15803d' : total >= 3 ? '#92400e' : '#dc2626';
+      scoreCell = '<span style="font-weight:700;color:'+scoreColor+'">'+total.toFixed(1)+'</span>';
+    }
+
     var v3badge = hasV3 ? '<span style="font-size:.6rem;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;border-radius:3px;padding:1px 4px;margin-left:3px">IA</span>' : '';
     return '<tr onclick="openDetail('+i+')" style="cursor:pointer">' +
       '<td>'+r.date+'</td>' +
       '<td>'+estadoCell+'</td>' +
-      '<td style="font-size:.82rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.mediator+v3badge+'</td>' +
+      '<td style="font-size:.82rem;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.mediator+v3badge+'</td>' +
       '<td style="font-size:.8rem">'+(TURN_LABEL[r.turn]||r.turn||'—')+'</td>' +
       '<td style="text-align:center">'+(aguaVal?aguaVal+'ml':'—')+'</td>' +
       '<td style="text-align:center">'+condCell+'</td>' +
-      '<td style="font-size:.72rem;color:var(--gray);max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+vocText+'</td>' +
+      '<td style="text-align:center">'+scoreCell+'</td>' +
+      '<td style="font-size:.72rem;color:var(--gray);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+vocText+'</td>' +
       '</tr>';
   }).join('');
   el.innerHTML = '<div class="ysb" style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.8rem;align-items:center">' +
     ybtns + '<span class="ysb-stat" style="margin-left:auto;font-size:.78rem;color:var(--gray)">📊 <b>'+filtered.length+'</b> informes</span></div>' +
     '<div style="overflow-x:auto"><table class="rep-table"><thead><tr>' +
-    '<th>Fecha</th><th>Ánimo</th><th>Mediador/a</th><th>Turno</th><th>Agua</th><th>Conducta</th><th>Vocab</th>' +
+    '<th>Fecha</th><th>Ánimo/Estado</th><th>Mediador/a</th><th>Turno</th><th>Agua</th><th>Conducta</th>' +
+    '<th title="Score ponderado: ánimo 45% + conducta 35% + medicación 20%">Score IA</th><th>Vocab</th>' +
     '</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 
