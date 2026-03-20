@@ -143,14 +143,14 @@ def parse_message(text: str, client: Optional[genai.Client] = None,
                     temperature=0.0,
                     max_output_tokens=4096,
                     thinking_config=types.ThinkingConfig(thinking_budget=0),
+                    response_mime_type="application/json",
                 ),
                 contents=text[:3000],  # limitar tokens de entrada
             )
             raw = response.text.strip()
 
-            # Limpiar posibles bloques markdown
+            # Limpiar posibles bloques markdown (por si acaso)
             if "```" in raw:
-                # Extraer contenido entre ``` ```
                 parts = raw.split("```")
                 for part in parts:
                     part = part.strip()
