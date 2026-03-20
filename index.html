@@ -2400,7 +2400,7 @@ async function p2ImprovePrompt() {
     if(!data.ok) throw new Error(data.error || 'Error al mejorar');
     var newPrompt = data.new_prompt;
     if(!newPrompt||newPrompt.length<100) throw new Error('Respuesta inválida');
-    p2savePromptVersion('Mejora automática tras '+recent.length+' correcciones');
+    p2savePromptVersion('Mejora automática tras '+p2State.errorLog.length+' correcciones');
     p2State.prompt = newPrompt;
     localStorage.setItem('p2_prompt', newPrompt);
     document.getElementById('p2-system-prompt').value = newPrompt;
