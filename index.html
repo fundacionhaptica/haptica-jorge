@@ -1202,7 +1202,7 @@ function openDetail(idx) {
   // Calcular estado medio local — fórmula ponderada
   var RESCUE = ['nolotil','paracetamol','ibuprofeno','diazepam','lorazepam','buscapina','algidol','spasmoctyl','fortasec'];
   var TRANQ  = ['diazepam','lorazepam'];
-  var med = (r.medicacion||'').toLowerCase();
+  var med = (r.medicacion_v3||r.medicacion||'').toLowerCase();
   var moodS = {'muy_positivo':1.0,'positivo':0.75,'neutro':0.5,'negativo':0.0}[r.mood]||0.5;
   var cond  = parseInt(r.conducta)||0;
   var condS = cond===0 ? 1.0 : cond===1 ? 0.4 : 0.0;
@@ -1230,7 +1230,10 @@ function openDetail(idx) {
     '<div class="d-stat"><div class="d-stat-val">'+(r.pis!=null?r.pis+' veces':'—')+'</div><div class="d-stat-label">Pis</div></div>' +
     '<div class="d-stat"><div class="d-stat-val">'+(r.estiramientos?'✅':'—')+'</div><div class="d-stat-label">Estiramientos</div></div>' +
     '</div>';
-  var sec = function(icon, title, val) { return val ? '<div class="ps"><div class="ps-title">'+icon+' '+title+'</div><div class="dtext">'+val+'</div></div>' : ''; };
+  var sec = function(icon, title, val) {
+    var display = val ? '<div class="dtext">'+val+'</div>' : '<div class="dtext" style="color:#94a3b8;font-style:italic">no detectado</div>';
+    return '<div class="ps"><div class="ps-title">'+icon+' '+title+'</div>'+display+'</div>';
+  };
   // Conducta desglosada V3 (si está disponible)
   var hasV3cond = r.autoagresiones!=null||r.agresiones_mediador!=null||r.aleteos!=null;
   if(hasV3cond) {
@@ -1244,27 +1247,29 @@ function openDetail(idx) {
   }
   html += sec('🚿','Baño', r.banyo);
   if(r.sueno_horas) html += sec('💤','Sueño', r.sueno_horas + ' h');
-  html += sec('🌡️','Estado', r.estado);
+  html += sec('🌡️','Estado ánimo', r.estado_v3 || r.estado);
   html += sec('💬','Comunicación', r.comunicacion);
   // Vocabulario: preferir el de V3 (texto) si existe, si no usar el array legacy
+  // Vocabulario: preferir V3
   var vocV3 = (r.vocabulario_v3||'').trim();
   if(vocV3) {
     html += '<div class="ps"><div class="ps-title">🗣️ Vocabulario (IA)</div><div class="dtext">'+vocV3+'</div></div>';
   } else if(vocab.length) {
     html += '<div class="ps"><div class="ps-title">🗣️ Vocabulario</div><div class="chips">'+vocab.map(function(w){return '<span class="chip">'+w+'</span>';}).join('')+'</div></div>';
-  }
-  // Actividades: preferir V3 si existe
-  html += sec('🎯','Actividades', r.actividad_v3 || r.actividades);
-  // Comidas desglosadas V3
-  var tomas = [{k:'desayuno',l:'🌅 Desayuno'},{k:'almuerzo',l:'🥐 Almuerzo'},{k:'comida',l:'🍽️ Comida'},{k:'merienda',l:'🍎 Merienda'},{k:'cena',l:'🌙 Cena'}];
-  var tomasHTML = tomas.filter(function(t){return r[t.k];}).map(function(t){return '<div style="font-size:.8rem;margin-bottom:3px"><strong>'+t.l+':</strong> '+r[t.k]+'</div>';}).join('');
-  if(tomasHTML) {
-    html += '<div class="ps"><div class="ps-title">🍽️ Alimentación (IA)</div>'+tomasHTML+'</div>';
   } else {
-    html += sec('🍽️','Comidas', r.comidas);
+    html += '<div class="ps"><div class="ps-title">🗣️ Vocabulario</div><div class="dtext" style="color:#94a3b8;font-style:italic">no detectado</div></div>';
   }
-  html += sec('💊','Medicación', r.medicacion);
-  html += sec('📝','Notas', r.observaciones || r.notas);
+  // Actividades: preferir V3
+  var actVal = r.actividad_v3 || r.actividades;
+  html += '<div class="ps"><div class="ps-title">🎯 Actividades</div>'+(actVal?'<div class="dtext">'+actVal+'</div>':'<div class="dtext" style="color:#94a3b8;font-style:italic">no detectado</div>')+'</div>';
+  // Alimentación: mostrar siempre todas las tomas
+  var tomas = [{k:'desayuno',l:'🌅 Desayuno'},{k:'almuerzo',l:'🥐 Almuerzo'},{k:'comida',l:'🍽️ Comida'},{k:'merienda',l:'🍎 Merienda'},{k:'cena',l:'🌙 Cena'}];
+  var tomasHTML = tomas.map(function(t){
+    return '<div style="font-size:.8rem;margin-bottom:4px"><strong>'+t.l+':</strong> '+(r[t.k]?r[t.k]:'<span style="color:#94a3b8;font-style:italic">no detectado</span>')+'</div>';
+  }).join('');
+  html += '<div class="ps"><div class="ps-title">🍽️ Alimentación</div>'+tomasHTML+'</div>';
+  html += sec('💊','Medicación', r.medicacion_v3 || r.medicacion);
+  html += sec('📝','Observaciones', r.observaciones || r.notas);
   document.getElementById('det-body').innerHTML = html;
   document.getElementById('overlay').classList.add('open');
 }
