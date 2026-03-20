@@ -1150,7 +1150,7 @@ def v3_reparse_all():
             for i, msg in enumerate(messages):
                 try:
                     body = msg.get("body_preview") or ""
-                    parsed = v3_parse_message(body, client=client, model="gemini-1.5-flash")
+                    parsed = v3_parse_message(body, client=client, model="gemini-1.5-flash-latest")
                     parsed["_source_date"] = msg["date"].isoformat() if msg.get("date") else None
                     parsed["_source_mediator"] = msg.get("mediator")
                     wcur = conn.cursor()
@@ -1284,7 +1284,7 @@ No elimines reglas que funcionen bien. Devuelve SOLO el prompt reescrito, sin ex
         user_msg = f"PROMPT ACTUAL:\n{current_prompt}\n\nERRORES DETECTADOS ({len(errors)}):\n{error_summary}\n\nReescribe el prompt corrigiendo estos errores."
 
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-1.5-flash-latest",
             contents=user_msg,
         )
         new_prompt = response.text.strip()
@@ -1749,7 +1749,7 @@ def v2_improve_prompt():
             '\n\nReescribe el prompt corrigiendo estos errores.'
         )
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-1.5-flash-latest',
             contents=improve_meta + '\n\n' + user_msg,
         )
         new_prompt = response.text.strip()
@@ -1821,7 +1821,7 @@ def v3_reparse_errors():
             for i, msg in enumerate(messages):
                 try:
                     body = msg.get('body_preview') or ''
-                    parsed = v3_parse_message(body, client=client, model='gemini-1.5-flash', few_shot_examples=few_shot)
+                    parsed = v3_parse_message(body, client=client, model='gemini-1.5-flash-latest', few_shot_examples=few_shot)
                     parsed['_source_date'] = msg['date'].isoformat() if msg.get('date') else None
                     parsed['_source_mediator'] = msg.get('mediator')
                     wcur = conn.cursor()
