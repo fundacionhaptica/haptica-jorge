@@ -28,29 +28,74 @@ from parser import parse_whatsapp
 load_dotenv()
 # ── Normalizador de actividades ────────────────────────────────────────────────
 _ACTIVITY_MAP = {
-    'tranvía': ['tranvia','tranvía','tranvía y mediadores','tranvia al centro','tranvía al centro','tranvia a casa','tranvía a casa'],
-    'piscina': ['piscina','nadar','natación','piscina…'],
+    # ── Tranvía ──────────────────────────────────────────────────────────────
+    'tranvía': ['tranvia','tranvía','tranvía y mediadores','tranvia al centro',
+                'tranvía al centro','tranvia a casa','tranvía a casa','tranvia'],
+    # ── Piscina ──────────────────────────────────────────────────────────────
+    'piscina': ['piscina','nadar','natación','piscina…','piscina descubierta',
+                'piscina cubierta'],
+    # ── Bicicleta ────────────────────────────────────────────────────────────
     'bicicleta': ['bici','bicicleta'],
-    'paseo': ['paseo','paseo por el pinar','el pinar','pinar'],
-    'cinta de correr': ['cinta de correr','cinta de correr…'],
+    # ── Paseo ────────────────────────────────────────────────────────────────
+    'paseo': ['paseo','paseo por el pinar','el pinar','pinar','paseo largo',
+              'paseo corto','salimos a pasear','{paseo}','paseo por el barrio',
+              'paseo por el parque','paseo alrededor de apascivi',
+              'paseo alrededor de apas','paseo por alrededores',
+              'paseo por alrededores de apascivi'],
+    # ── Paseo con Pincho (perro) ──────────────────────────────────────────────
+    'paseo con pincho': ['paseo con pincho','pincho','salida con pincho',
+                         'paseo perro','paseo con el perro'],
+    # ── Canicross ────────────────────────────────────────────────────────────
+    'canicross': ['canicross'],
+    # ── Cinta de correr ──────────────────────────────────────────────────────
+    'cinta de correr': ['cinta de correr','cinta de correr…','cinta'],
+    # ── Rutina residencia ─────────────────────────────────────────────────────
+    'rutina residencia': ['rutina de residencia (ducha','rutina de residencia  (ducha',
+                          'rutina de residencia','rutina residencia'],
+    # ── Rutina casa ───────────────────────────────────────────────────────────
+    'rutina casa': ['rutina de casa','rutina en casa','rutina casa','rutina'],
+    # ── Rutina FADEMA ─────────────────────────────────────────────────────────
+    'rutina FADEMA': ['rutina fadema','rutina de fadema','rutina en fadema'],
+    # ── Aseo/higiene ─────────────────────────────────────────────────────────
+    'aseo/higiene': ['aseo','ducha','ducharse','ropa','peinar','calcetines',
+                     'babero','sucio','baño','bañarse','baño jorge','baño en casa'],
+    # ── Tapones ──────────────────────────────────────────────────────────────
+    'tapones (autonomía)': ['tapones','tapones autónomamente','tapones de forma autónoma',
+                            'tapones autonomamente','tapones autonomía','tapones autonómamente'],
+    # ── Autonomía ────────────────────────────────────────────────────────────
+    'autonomía': ['autonomía','autonomía: limpia mesa','autonomia'],
+    # ── Comunicación ─────────────────────────────────────────────────────────
+    'comunicación': ['comunicación','conversación trasversal','comunicacion',
+                     'comunicación sentimientos','contar lo que hizo con laura',
+                     'preguntar por la tienda'],
+    # ── Braille ──────────────────────────────────────────────────────────────
+    'braille': ['braille','lectura braille','braille (nombres)','braille nombres',
+                'esquema corporal'],
+    # ── Anticipadores ────────────────────────────────────────────────────────
+    'anticipadores': ['anticipadores','anticipadores...)','anticipación'],
+    # ── Centro de recursos ───────────────────────────────────────────────────
+    'centro de recursos': ['centro de recursos','centro de recursos:',
+                           'ir al centro de recursos'],
+    # ── Musicoterapia ────────────────────────────────────────────────────────
+    'musicoterapia': ['musicoterapia','música','musica'],
+    # ── Psicomotricidad ──────────────────────────────────────────────────────
+    'psicomotricidad': ['psicomotricidad fina','psicomotricidad','pelotas bobath',
+                        'conciencia corporal'],
+    # ── Relajación/masaje ────────────────────────────────────────────────────
+    'relajación/masaje': ['relajación','masaje abdominal','masaje','relajacion'],
+    # ── Huerto ───────────────────────────────────────────────────────────────
+    'huerto': ['huerto'],
+    # ── Coche ────────────────────────────────────────────────────────────────
+    'coche': ['coche de raúl','coche','ir al piso','leer'],
+    # ── Vuelta a casa ────────────────────────────────────────────────────────
+    'vuelta a casa': ['vuelta a casa'],
+    # ── Comidas ──────────────────────────────────────────────────────────────
     'desayuno': ['desayuno','desayuno)'],
     'almuerzo': ['almuerzo'],
     'comida': ['comida'],
-    'merienda': ['merienda','merendamos'],
+    'merienda': ['merienda','merendamos','merienda stadium casabla'],
     'cena': ['cena','cena (signos habitación','cena ( signos babero'],
-    'aseo/higiene': ['aseo','ducha','ropa','peinar','calcetines','babero','sucio'],
-    'rutina residencia': ['rutina de residencia (ducha','rutina de residencia  (ducha','rutina de residencia'],
-    'tapones (autonomía)': ['tapones','tapones autónomamente','tapones de forma autónoma','tapones autonomamente'],
-    'autonomía': ['autonomía','autonomía: limpia mesa'],
-    'comunicación': ['comunicación','conversación trasversal'],
-    'braille': ['braille'],
-    'anticipadores': ['anticipadores','anticipadores...)','anticipación'],
-    'centro de recursos': ['centro de recursos','centro de recursos:'],
-    'huerto': ['huerto'],
-    'música': ['música'],
-    'relajación/masaje': ['relajación','masaje abdominal','masaje'],
-    'coche': ['coche de raúl','coche'],
-    'vuelta a casa': ['vuelta a casa'],
+    # ── Otros ────────────────────────────────────────────────────────────────
     'compañeros': ['compañeros'],
     'deporte': ['deporte'],
 }
