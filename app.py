@@ -483,7 +483,8 @@ def get_reports():
             v.agresiones_terceros, v.aleteos, v.sueno_horas,
             v.desayuno, v.almuerzo, v.comida, v.merienda, v.cena,
             v.actividad AS actividad_v3, v.vocabulario AS vocabulario_v3,
-            v.observaciones, v.estado AS estado_v3, v.medicacion AS medicacion_v3
+            v.observaciones, v.estado AS estado_v3, v.medicacion AS medicacion_v3,
+            v.caca_consistencia, v.receptividad
         FROM reports r
         LEFT JOIN reports_v3 v ON (v.source_id = r.id OR (v.source_id IS NULL AND v.date = r.date AND v.mediator = r.mediator AND v.turn = r.turn))
         WHERE {' AND '.join(where)}
@@ -1071,19 +1072,19 @@ def _upsert_v3(cur, parsed: dict, source_id: int, body_preview: str):
     cur.execute("""
         INSERT INTO reports_v3 (
             source_id, date, mediator, turn, seq,
-            pis, caca, agua_ml, sueno_horas,
+            pis, caca, caca_consistencia, agua_ml, sueno_horas,
             estiramientos, autoagresiones, agresiones_mediador,
             agresiones_terceros, aleteos,
-            medicacion, estado,
+            medicacion, estado, receptividad,
             desayuno, almuerzo, comida, merienda, cena,
             actividad, vocabulario, observaciones,
             parse_model, parse_error, body_preview, updated_at
         ) VALUES (
             %(source_id)s, %(fecha)s, %(mediador)s, %(turno)s, 1,
-            %(pis)s, %(caca)s, %(agua_ml)s, %(sueno_horas)s,
+            %(pis)s, %(caca)s, %(caca_consistencia)s, %(agua_ml)s, %(sueno_horas)s,
             %(estiramientos)s, %(autoagresiones)s, %(agresiones_mediador)s,
             %(agresiones_terceros)s, %(aleteos)s,
-            %(medicacion)s, %(estado)s,
+            %(medicacion)s, %(estado)s, %(receptividad)s,
             %(desayuno)s, %(almuerzo)s, %(comida)s, %(merienda)s, %(cena)s,
             %(actividad)s, %(vocabulario)s, %(observaciones)s,
             'gemini-2.5-flash', %(parse_error)s, %(body_preview)s, NOW()
@@ -1091,13 +1092,15 @@ def _upsert_v3(cur, parsed: dict, source_id: int, body_preview: str):
         ON CONFLICT (date, mediator, turn, seq)
         DO UPDATE SET
             pis = EXCLUDED.pis, caca = EXCLUDED.caca,
+            caca_consistencia = EXCLUDED.caca_consistencia,
             agua_ml = EXCLUDED.agua_ml, sueno_horas = EXCLUDED.sueno_horas,
             estiramientos = EXCLUDED.estiramientos,
             autoagresiones = EXCLUDED.autoagresiones,
             agresiones_mediador = EXCLUDED.agresiones_mediador,
             agresiones_terceros = EXCLUDED.agresiones_terceros,
             aleteos = EXCLUDED.aleteos, medicacion = EXCLUDED.medicacion,
-            estado = EXCLUDED.estado, desayuno = EXCLUDED.desayuno,
+            estado = EXCLUDED.estado, receptividad = EXCLUDED.receptividad,
+            desayuno = EXCLUDED.desayuno,
             almuerzo = EXCLUDED.almuerzo, comida = EXCLUDED.comida,
             merienda = EXCLUDED.merienda, cena = EXCLUDED.cena,
             actividad = EXCLUDED.actividad, vocabulario = EXCLUDED.vocabulario,

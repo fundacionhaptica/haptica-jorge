@@ -32,9 +32,13 @@ CREATE TABLE IF NOT EXISTS reports_v3 (
     agresiones_terceros INTEGER,
     aleteos             INTEGER,
 
+    -- Baño: consistencia deposición
+    caca_consistencia TEXT,
+
     -- Medicación y estado
     medicacion      TEXT,
     estado          TEXT,
+    receptividad    TEXT,
 
     -- Alimentación desglosada por toma (nuevo en v3)
     desayuno        TEXT,
@@ -82,6 +86,18 @@ def migrate(drop_first=False):
     print("Creando tabla reports_v3...")
     cur.execute(CREATE_TABLE)
     print("✓ Tabla reports_v3 creada (o ya existía)")
+
+    # Añadir columnas nuevas si no existen (para tablas ya creadas)
+    new_cols = [
+        ("caca_consistencia", "TEXT"),
+        ("receptividad", "TEXT"),
+    ]
+    for col, coltype in new_cols:
+        try:
+            cur.execute(f"ALTER TABLE reports_v3 ADD COLUMN IF NOT EXISTS {col} {coltype}")
+            print(f"✓ Columna {col} añadida (o ya existía)")
+        except Exception as e:
+            print(f"⚠ {col}: {e}")
 
     cur.close()
     conn.close()

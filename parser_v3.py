@@ -60,6 +60,7 @@ CAMPOS A EXTRAER (devuelve SIEMPRE todos, null si no aparece):
 - turno: "Mañana", "Tarde" o "Noche" (normaliza: "mañanas"→"Mañana", "tardes"→"Tarde")
 - pis: número entero de veces que ha hecho pis (null si no menciona)
 - caca: número entero (0 si "no" o "cacas no", null si no menciona)
+- caca_consistencia: calidad de la deposición — "normal", "blando", "diarrea", "bolitas", "dura" (null si no menciona o caca=0)
 - agua_ml: agua bebida en mililitros como entero (convierte: "1l"/"1 litro"→1000, "1.5 litros"→1500, "500ml"→500, "0.5L"→500)
 - sueno_horas: horas de sueño como decimal ("3:25"→3.42, "7h30m"→7.5, null si no menciona)
 - estiramientos: valor numérico 0-5 de la escala de estiramientos (null si no menciona)
@@ -81,6 +82,8 @@ ALIMENTACIÓN — separa por tomas:
 
 - medicacion: lista de medicamentos separados por " / " (incluye dosis si se menciona)
 - estado: descripción del estado de ánimo, preserva matices y variantes con "/"
+- receptividad: nivel de participación en actividades — "alta", "normal", "baja", "nula" (null si no se menciona)
+  Ejemplos: "estaba receptivo", "participó bien" → "alta"; "no quería hacer nada", "rechazó actividades" → "nula"
 - actividad: lista de actividades realizadas separadas por " / "
 - vocabulario: palabras/signos nuevos trabajados, separados por coma (null si no menciona)
 - observaciones: logros, notas, observaciones adicionales relevantes
@@ -93,15 +96,15 @@ REGLAS CRÍTICAS:
 5. Devuelve SOLO JSON válido, sin markdown, sin explicaciones, sin texto extra.
 
 FORMATO DE RESPUESTA (exactamente estos campos):
-{"mediador":null,"fecha":null,"turno":null,"pis":null,"caca":null,"agua_ml":null,"sueno_horas":null,"estiramientos":null,"autoagresiones":null,"agresiones_mediador":null,"agresiones_terceros":null,"aleteos":null,"medicacion":null,"estado":null,"desayuno":null,"almuerzo":null,"comida":null,"merienda":null,"cena":null,"actividad":null,"vocabulario":null,"observaciones":null}"""
+{"mediador":null,"fecha":null,"turno":null,"pis":null,"caca":null,"caca_consistencia":null,"agua_ml":null,"sueno_horas":null,"estiramientos":null,"autoagresiones":null,"agresiones_mediador":null,"agresiones_terceros":null,"aleteos":null,"medicacion":null,"estado":null,"receptividad":null,"desayuno":null,"almuerzo":null,"comida":null,"merienda":null,"cena":null,"actividad":null,"vocabulario":null,"observaciones":null}"""
 
 EMPTY_RESULT = {
     "mediador": None, "fecha": None, "turno": None,
-    "pis": None, "caca": None, "agua_ml": None, "sueno_horas": None,
+    "pis": None, "caca": None, "caca_consistencia": None, "agua_ml": None, "sueno_horas": None,
     "estiramientos": None,
     "autoagresiones": None, "agresiones_mediador": None,
     "agresiones_terceros": None, "aleteos": None,
-    "medicacion": None, "estado": None,
+    "medicacion": None, "estado": None, "receptividad": None,
     "desayuno": None, "almuerzo": None, "comida": None,
     "merienda": None, "cena": None,
     "actividad": None, "vocabulario": None, "observaciones": None,

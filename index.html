@@ -1124,15 +1124,23 @@ function calcEstado(r) {
   // — Medicación de rescate —
   var medS = RESCUE.some(function(m){return med.indexOf(m)>=0;}) ? 0.0 : 1.0;
 
-  // — Hidratación + baño —
+  // — Hidratación + baño + caca —
   var agua = parseInt(r.agua_ml||r.agua)||0;
   var banyo = (r.banyo||'').trim();
   var aguaS  = agua>=1500?1.0:agua>=1000?0.8:agua>=500?0.5:agua>0?0.3:0;
   var banyoS = banyo.length>2?1.0:0.0;
+  var cacaConsist = (r.caca_consistencia||'').toLowerCase();
+  var cacaS = cacaConsist==='normal'?0.2:cacaConsist==='dura'?0.1:
+              cacaConsist.match(/blando|diarrea|bolitas/)?-0.1:0;
   var hidS   = agua>0||banyo ? (aguaS+banyoS)/2 : 0.5; // neutro si no hay dato
+
+  // — Receptividad a actividades (ajusta conducta) —
+  var recept = (r.receptividad||'').toLowerCase();
+  var receptBonus = recept==='alta'?0.05:recept==='baja'?-0.05:recept==='nula'?-0.10:0;
 
   // — Base ponderada —
   var base = animoS*0.40 + condS*0.30 + medS*0.20 + hidS*0.10;
+  base += cacaS + receptBonus;
 
   // — Penalizaciones —
   var agresiones = r.autoagresiones!=null
@@ -1259,6 +1267,11 @@ function openDetail(idx) {
       '</div></div>';
   }
   html += sec('🚿','Baño', r.banyo);
+  if(r.caca!=null) {
+    var cacaStr = r.caca + ' vez'+(r.caca!==1?'es':'') + (r.caca_consistencia ? ' · '+r.caca_consistencia : '');
+    html += sec('💩','Deposición', cacaStr);
+  }
+  if(r.receptividad) html += sec('🙌','Receptividad actividades', r.receptividad);
   if(r.sueno_horas) html += sec('💤','Sueño', r.sueno_horas + ' h');
   html += sec('🌡️','Estado ánimo', r.estado_v3 || r.estado);
   html += sec('💬','Comunicación', r.comunicacion);
