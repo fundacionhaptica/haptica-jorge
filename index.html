@@ -1095,6 +1095,57 @@ function renderCondChart(monthly) {
 }
 
 // ── LISTA INFORMES ────────────────────────────────────────────────────────────
+// ── CÁLCULO ESTADO MEDIO (0-5) ───────────────────────────────────────────────
+// Fórmula: ánimo 40% · conducta 30% · medicación rescate 20% · hidratación+baño 10%
+// Penalización: -0.25 si ≥2 picos agresión/autolesión · -0.10 si tranquilizantes
+function calcEstado(r) {
+  var RESCUE = ['diazepam','lorazepam','haloperidol','tranquimazin','midazolam'];
+  var TRANQ  = ['diazepam','lorazepam','haloperidol','tranquimazin','midazolam'];
+  var med = (r.medicacion_v3||r.medicacion||'').toLowerCase();
+
+  // — Ánimo: preferir estado_v3 (texto libre), fallback a mood regex —
+  var animoS = 0.5; // neutro por defecto
+  var estadoStr = (r.estado_v3||r.estado||'').toLowerCase();
+  if (estadoStr.match(/muy.?(bien|bueno|content|feliz|tranquil|positiv)/)) animoS = 1.0;
+  else if (estadoStr.match(/bien|bueno|content|feliz|tranquil|positiv|cariños/)) animoS = 0.80;
+  else if (estadoStr.match(/regular|variable|alternando|momentos|normal/)) animoS = 0.60;
+  else if (estadoStr.match(/mal|triste|agitad|nervios|inquiet|negativ|tenso/)) animoS = 0.30;
+  else if (estadoStr.match(/muy.?(mal|agitad|nervios|negativ)/)) animoS = 0.10;
+  else if (r.mood) {
+    animoS = {'muy_positivo':1.0,'positivo':0.80,'neutro':0.50,'negativo':0.20}[r.mood]||0.50;
+  }
+
+  // — Conducta: total de episodios (IA o regex) —
+  var condTotal = r.autoagresiones!=null
+    ? ((r.autoagresiones||0)+(r.agresiones_mediador||0)+(r.agresiones_terceros||0)+(r.aleteos||0))
+    : (parseInt(r.conducta)||0);
+  var condS = condTotal===0 ? 1.0 : condTotal===1 ? 0.5 : Math.max(0, 1.0 - condTotal*0.25);
+
+  // — Medicación de rescate —
+  var medS = RESCUE.some(function(m){return med.indexOf(m)>=0;}) ? 0.0 : 1.0;
+
+  // — Hidratación + baño —
+  var agua = parseInt(r.agua_ml||r.agua)||0;
+  var banyo = (r.banyo||'').trim();
+  var aguaS  = agua>=1500?1.0:agua>=1000?0.8:agua>=500?0.5:agua>0?0.3:0;
+  var banyoS = banyo.length>2?1.0:0.0;
+  var hidS   = agua>0||banyo ? (aguaS+banyoS)/2 : 0.5; // neutro si no hay dato
+
+  // — Base ponderada —
+  var base = animoS*0.40 + condS*0.30 + medS*0.20 + hidS*0.10;
+
+  // — Penalizaciones —
+  var agresiones = r.autoagresiones!=null
+    ? ((r.autoagresiones||0)+(r.agresiones_mediador||0)+(r.agresiones_terceros||0))
+    : (parseInt(r.conducta)||0);
+  if (agresiones >= 2) base -= 0.25;
+  if (TRANQ.some(function(t){return med.indexOf(t)>=0;})) base -= 0.10;
+
+  var score = Math.round(Math.max(0,Math.min(1,base))*5*10)/10;
+  var emoji = score>=4.5?'😄':score>=3.5?'😊':score>=2.5?'🙂':score>=1.5?'😐':score>=0.5?'😟':'😤';
+  return {score:score, emoji:emoji};
+}
+
 function renderList() {
   var years = ['all'].concat([...new Set(REPORTS.map(function(r){return r.date.slice(0,4);})
   )].sort().reverse());
@@ -1128,31 +1179,12 @@ function renderList() {
     var vocText = r.vocabulario_v3 ? r.vocabulario_v3.slice(0,40)
       : (function(){var vc=Array.isArray(r.vocab)?r.vocab:(typeof r.vocab==='string'?JSON.parse(r.vocab||'[]'):[]);return vc.slice(0,3).join(', ');})();
 
-    // — Score ponderado (0-5): ánimo 45% + conducta 35% + medicación 20% —
+    // — Score ponderado (0-5) usando fórmula unificada —
     var scoreCell = '—';
     if (hasV3) {
-      // Ánimo: mapear estado texto a valor 0-5
-      var estadoStr = (r.estado_v3||r.estado||'').toLowerCase();
-      var animoScore = 2.5; // neutro por defecto
-      if (estadoStr.match(/muy.?(bien|bueno|content|feliz|tranquil|positiv)/)) animoScore = 5;
-      else if (estadoStr.match(/bien|bueno|content|feliz|tranquil|positiv/)) animoScore = 4;
-      else if (estadoStr.match(/regular|variable|alternando|momentos/)) animoScore = 3;
-      else if (estadoStr.match(/mal|triste|agitad|nervios|inquiet|negativ/)) animoScore = 2;
-      else if (estadoStr.match(/muy.?(mal|agitad|nervios|negativ)/)) animoScore = 1;
-      // También usar mood del regex si no hay estado IA
-      if (!r.estado_v3 && !r.estado && r.mood) {
-        var moodMap = {muy_positivo:5, positivo:4, neutro:2.5, negativo:1};
-        animoScore = moodMap[r.mood] || 2.5;
-      }
-      // Conducta: 5 si sin incidentes, penalizar por episodios
-      var condScore = Math.max(0, 5 - condTotal);
-      // Medicación: 5 si sin rescate, 0 si hay
-      var medStr = (r.medicacion_v3||r.medicacion||'').toLowerCase();
-      var medScore = medStr.match(/diazepam|lorazepam|haloperidol|tranquimazin|rescate/) ? 0 : 5;
-      var total = (animoScore * 0.45) + (condScore * 0.35) + (medScore * 0.20);
-      total = Math.round(Math.min(5, Math.max(0, total)) * 10) / 10;
-      var scoreColor = total >= 4 ? '#15803d' : total >= 3 ? '#92400e' : '#dc2626';
-      scoreCell = '<span style="font-weight:700;color:'+scoreColor+'">'+total.toFixed(1)+'</span>';
+      var est = calcEstado(r);
+      var scoreColor = est.score >= 4 ? '#15803d' : est.score >= 3 ? '#92400e' : '#dc2626';
+      scoreCell = '<span style="font-weight:700;color:'+scoreColor+'" title="'+est.emoji+' '+est.score+'/5">'+est.score.toFixed(1)+'</span>';
     }
 
     var v3badge = hasV3 ? '<span style="font-size:.6rem;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;border-radius:3px;padding:1px 4px;margin-left:3px">IA</span>' : '';
@@ -1200,28 +1232,9 @@ function openDetail(idx) {
   document.getElementById('det-meta').textContent = r.mediator + ' · ' + (TURN_LABEL[r.turn]||r.turn||'—');
   var vocab = Array.isArray(r.vocab) ? r.vocab : (typeof r.vocab==='string'?JSON.parse(r.vocab||'[]'):[]);
   // Calcular estado medio local — fórmula ponderada
-  var RESCUE = ['nolotil','paracetamol','ibuprofeno','diazepam','lorazepam','buscapina','algidol','spasmoctyl','fortasec'];
-  var TRANQ  = ['diazepam','lorazepam'];
-  var med = (r.medicacion_v3||r.medicacion||'').toLowerCase();
-  var moodS = {'muy_positivo':1.0,'positivo':0.75,'neutro':0.5,'negativo':0.0}[r.mood]||0.5;
-  var cond  = parseInt(r.conducta)||0;
-  var condS = cond===0 ? 1.0 : cond===1 ? 0.4 : 0.0;
-  var medS  = RESCUE.some(function(m){return med.indexOf(m)>=0;}) ? 0.0 : 1.0;
-  var agua  = parseInt(r.agua)||0;
-  var banyo = (r.banyo||'').trim();
-  var base;
-  if(agua>0||banyo){
-    var aguaS  = agua>=1000?1.0:agua>=500?0.6:0.3;
-    var banyoS = banyo.length>2?1.0:0.4;
-    var hidS   = (aguaS+banyoS)/2;
-    base = moodS*0.40 + condS*0.30 + medS*0.20 + hidS*0.10;
-  } else {
-    base = moodS*0.45 + condS*0.35 + medS*0.20;
-  }
-  if(cond>=2) base -= 0.25;
-  if(TRANQ.some(function(t){return med.indexOf(t)>=0;})) base -= 0.10;
-  var estadoNum = Math.round(Math.max(0,Math.min(5,base*5))*10)/10;
-  var estadoEmoji = estadoNum>=4.5?'😄':estadoNum>=3.5?'😊':estadoNum>=2.5?'🙂':estadoNum>=1.5?'😐':estadoNum>=0.5?'😟':'😤';
+  var est = calcEstado(r);
+  var estadoNum = est.score;
+  var estadoEmoji = est.emoji;
   var html = '<div class="d-grid">' +
     '<div class="d-stat"><div class="d-stat-val"><span class="badge '+(MOOD_CLASS[r.mood]||'b-q')+'">'+(MOOD_LABEL[r.mood]||'?')+'</span></div><div class="d-stat-label">Ánimo mediador</div></div>' +
     '<div class="d-stat"><div class="d-stat-val" style="font-size:1.4rem">' + estadoEmoji + ' ' + estadoNum + '/5</div><div class="d-stat-label">Estado medio</div></div>' +
