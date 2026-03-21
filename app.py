@@ -1573,26 +1573,46 @@ def generate_monthly_report():
     if not gemini_key:
         return jsonify({'error': 'GEMINI_API_KEY no configurada'}), 503
 
-    db = get_db(); cur = db.cursor()
+    try:
+        db = get_db(); cur = db.cursor()
+    except Exception as e:
+        app.logger.error(f"monthly-report DB connection error: {e}")
+        return jsonify({'error': f'Error de base de datos: {str(e)}'}), 500
 
-    # Datos del mes actual
-    cur.execute("""
-        SELECT date, mediator, turn, mood, conducta, agua, pis, medicacion,
-               estado, actividades, body_preview,
-               LEAST(5.0, GREATEST(0.0, (
-                 (CASE WHEN mood='muy_positivo' THEN 1.0 WHEN mood='positivo' THEN 0.75
-                       WHEN mood='neutro' THEN 0.5 WHEN mood='negativo' THEN 0.0 ELSE 0.5 END)*0.45
-                 +(CASE WHEN conducta=0 THEN 1.0 WHEN conducta=1 THEN 0.4 ELSE 0.0 END)*0.35
-                 +(CASE WHEN LOWER(COALESCE(medicacion,'')) SIMILAR TO
-                   '%%(nolotil|paracetamol|ibuprofeno|diazepam|lorazepam)%%'
-                   THEN 0.0 ELSE 1.0 END)*0.20
-                 -(CASE WHEN conducta>=2 THEN 0.25 ELSE 0.0 END)
-               )*5.0)) as estado_score
-        FROM reports
-        WHERE EXTRACT(YEAR FROM date)=%s AND EXTRACT(MONTH FROM date)=%s
-        ORDER BY date
-    """, (year, month))
-    month_reports = [dict(r) for r in cur.fetchall()]
+    # Datos del mes actual — intentar con columnas extendidas, fallback a básicas
+    month_reports = []
+    try:
+        cur.execute("""
+            SELECT date, mediator, turn, mood, conducta, agua, pis, medicacion,
+                   estado, actividades, body_preview,
+                   LEAST(5.0, GREATEST(0.0, (
+                     (CASE WHEN mood='muy_positivo' THEN 1.0 WHEN mood='positivo' THEN 0.75
+                           WHEN mood='neutro' THEN 0.5 WHEN mood='negativo' THEN 0.0 ELSE 0.5 END)*0.45
+                     +(CASE WHEN conducta=0 THEN 1.0 WHEN conducta=1 THEN 0.4 ELSE 0.0 END)*0.35
+                     +(CASE WHEN LOWER(COALESCE(medicacion,'')) SIMILAR TO
+                       '%%(nolotil|paracetamol|ibuprofeno|diazepam|lorazepam)%%'
+                       THEN 0.0 ELSE 1.0 END)*0.20
+                     -(CASE WHEN conducta>=2 THEN 0.25 ELSE 0.0 END)
+                   )*5.0)) as estado_score
+            FROM reports
+            WHERE EXTRACT(YEAR FROM date)=%s AND EXTRACT(MONTH FROM date)=%s
+            ORDER BY date
+        """, (year, month))
+        month_reports = [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        app.logger.warning(f"monthly-report query extendida falló ({e}), intentando básica")
+        db.rollback()
+        try:
+            cur.execute("""
+                SELECT date, mediator, turn, mood, conducta, agua, pis, medicacion, estado
+                FROM reports
+                WHERE EXTRACT(YEAR FROM date)=%s AND EXTRACT(MONTH FROM date)=%s
+                ORDER BY date
+            """, (year, month))
+            month_reports = [dict(r) for r in cur.fetchall()]
+        except Exception as e2:
+            app.logger.error(f"monthly-report query básica también falló: {e2}")
+            return jsonify({'error': f'Error consultando datos: {str(e2)}'}), 500
 
     # Datos V3 del mes (conducta desglosada)
     v3_data = []
@@ -1606,21 +1626,28 @@ def generate_monthly_report():
             ORDER BY date
         """, (year, month))
         v3_data = [dict(r) for r in cur.fetchall()]
-    except: pass
+    except Exception as e:
+        app.logger.warning(f"monthly-report v3_data falló (tabla puede no existir): {e}")
+        db.rollback()
 
     # Tendencia 3 meses anteriores
-    cur.execute("""
-        SELECT TO_CHAR(date,'YYYY-MM') as month,
-               COUNT(*) as informes,
-               ROUND(AVG(CASE WHEN mood='muy_positivo' THEN 4 WHEN mood='positivo' THEN 3
-                              WHEN mood='neutro' THEN 2 WHEN mood='negativo' THEN 1 ELSE 2.5 END)::numeric,2) as avg_mood,
-               ROUND(100.0*SUM(CASE WHEN conducta>0 THEN 1 ELSE 0 END)/COUNT(*),1) as pct_picos
-        FROM reports
-        WHERE date >= (DATE_TRUNC('month', MAKE_DATE(%s,%s,1)) - INTERVAL '3 months')
-          AND date < MAKE_DATE(%s,%s,1)
-        GROUP BY month ORDER BY month
-    """, (year, month, year, month))
-    trend = [dict(r) for r in cur.fetchall()]
+    trend = []
+    try:
+        cur.execute("""
+            SELECT TO_CHAR(date,'YYYY-MM') as month,
+                   COUNT(*) as informes,
+                   ROUND(AVG(CASE WHEN mood='muy_positivo' THEN 4 WHEN mood='positivo' THEN 3
+                                  WHEN mood='neutro' THEN 2 WHEN mood='negativo' THEN 1 ELSE 2.5 END)::numeric,2) as avg_mood,
+                   ROUND(100.0*SUM(CASE WHEN conducta>0 THEN 1 ELSE 0 END)/COUNT(*),1) as pct_picos
+            FROM reports
+            WHERE date >= (DATE_TRUNC('month', MAKE_DATE(%s,%s,1)) - INTERVAL '3 months')
+              AND date < MAKE_DATE(%s,%s,1)
+            GROUP BY month ORDER BY month
+        """, (year, month, year, month))
+        trend = [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        app.logger.warning(f"monthly-report trend falló: {e}")
+        db.rollback()
 
     # Documentos médicos relevantes
     medical_context = ""
@@ -1631,7 +1658,9 @@ def generate_monthly_report():
             medical_context = "\n\nCONTEXTO MÉDICO DISPONIBLE:\n" + "\n".join(
                 [f"- {r['content_summary']}" for r in med_docs if r['content_summary']]
             )
-    except: pass
+    except Exception as e:
+        app.logger.warning(f"monthly-report medical_docs falló: {e}")
+        db.rollback()
 
     if not month_reports:
         return jsonify({'error': f'No hay datos para {year}-{month:02d}'}), 404
