@@ -1674,18 +1674,33 @@ def generate_monthly_report():
     try:
         from google import genai as gai
         client = gai.Client(api_key=gemini_key)
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=report_prompt,
-        )
-        raw = response.text.strip()
+        # Intentar con gemini-2.5-flash, fallback a gemini-2.0-flash
+        raw = None
+        last_error = None
+        for model_name in ["gemini-2.5-flash", "gemini-2.0-flash"]:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=report_prompt,
+                )
+                raw = response.text.strip()
+                break
+            except Exception as model_err:
+                last_error = model_err
+                continue
+        if raw is None:
+            raise last_error or Exception("No se pudo generar respuesta")
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"): raw = raw[4:]
         raw = raw.strip()
         report_data = json.loads(raw)
         return jsonify({'ok': True, 'report': report_data, 'year': year, 'month': month})
+    except json.JSONDecodeError as e:
+        app.logger.error(f"JSON decode error en monthly-report: {e} — raw: {raw[:200] if raw else 'None'}")
+        return jsonify({'error': f'Gemini devolvió respuesta no válida: {str(e)}'}), 500
     except Exception as e:
+        app.logger.error(f"Error en monthly-report: {type(e).__name__}: {e}")
         return jsonify({'error': f'Error generando informe: {str(e)}'}), 500
 
 
